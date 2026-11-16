@@ -1,0 +1,17 @@
+# No visual randomization: the Phase 1 scene exactly as configs/scenes/default.yaml describes
+# it, the nominal camera mount, and untouched images. Viewpoints, ball and robot placement are
+# still varied (they come from the dataset configuration, not from here).
+# Use it to debug labels and as the "no domain randomization" arm of a comparison.
+name: none
+camera:
+  height_std: 0.0                 # metres around the camera config's mount height
+  height_limits: [0.90, 0.90]
+  pitch_std_deg: 0.0              # degrees around the mount pitch
+  pitch_limits_deg: [25.0, 25.0]
+  roll_std_deg: 0.0
+  roll_limit_deg: 0.0
+  pan_range_deg: [-30.0, 30.0]    # head pan is viewpoint variety, kept even here
+scene:
+  enabled: false
+image:
+  enabled: false

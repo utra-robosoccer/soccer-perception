@@ -11,3 +11,9 @@ MUJOCO_LOG.TXT
 outputs/
 *.mp4
 *.npz
+
+# Pretrained model checkpoints (scripts/train_detector.py --download).
+weights/
+*.pt
+*.onnx
+*.torchscript

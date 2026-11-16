@@ -1,0 +1,31 @@
+# Small U-Net (about 2 M parameters) for background / field / field_line. Sized for a 4 GB
+# laptop GPU: about 1.6 GB of GPU memory at batch 8 with mixed precision.
+name: unet_small
+dataset: outputs/datasets/baseline
+output: outputs/segmentation      # runs go to <output>/<name>/
+model:
+  architecture: small_unet        # segmentation/model.py::MODELS
+  num_classes: 3
+  base_channels: 16
+  depth: 4
+epochs: 40
+patience: 8                       # early stopping: epochs without improvement of `monitor`
+monitor: line_iou                 # line_iou | line_f1 | mean_iou; decides which epoch is "best"
+batch: 8
+val_batch: 8
+workers: 2                        # dataloader processes; each costs RAM
+device: auto                      # auto = cuda:0 if available, else cpu
+amp: true                         # mixed precision on GPU
+seed: 0
+deterministic: false              # true = bit-reproducible cuDNN, somewhat slower
+learning_rate: 0.003              # peak of the one-cycle schedule (AdamW)
+weight_decay: 0.0001
+warmup_fraction: 0.1
+class_weights: auto               # auto = (max share / class share) ** class_weight_power from the
+                                  # training split; or a list like [1.0, 1.0, 4.0]; or null
+class_weight_power: 0.5
+dice_weight: 0.5                  # weight of the Dice term on field_line
+augment:                          # geometric; the mask is transformed with the image
+  crop_size: [512, 352]           # width, height; multiples of 16
+  scale_range: [0.8, 1.25]
+  flip_prob: 0.5

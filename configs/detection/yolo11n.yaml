@@ -1,0 +1,33 @@
+# YOLO11n fine-tuned from COCO weights on a synthetic dataset. Sized for a 4 GB laptop GPU
+# (RTX 2050): about 2 GB of GPU memory at batch 16. If you run out of memory, halve `batch`.
+name: yolo11n
+model: yolo11n.pt                 # checkpoint in weights/ (python scripts/train_detector.py --download yolo11n.pt)
+                                  # or an architecture such as yolo11n.yaml (random weights, no download);
+                                  # yolo26n.pt works the same way
+dataset: outputs/datasets/baseline
+output: outputs/detection         # runs go to <output>/<name>/
+imgsz: 640                        # training / inference size (long side); the 640x360 images are letterboxed
+epochs: 40
+patience: 10                      # early stopping: epochs without validation improvement
+batch: 16
+workers: 2                        # dataloader processes; each costs RAM
+device: auto                      # auto = cuda:0 if available, else cpu; or "cpu", 0, ...
+amp: true                         # mixed precision on GPU
+seed: 0
+deterministic: true
+optimizer: auto
+cache: false                      # true caches decoded images in RAM (about 1 GB for the baseline set)
+save_period: -1                   # besides best.pt / last.pt, save every N epochs (-1 = off)
+plots: true
+augment:                          # Ultralytics training-time augmentation; boxes are transformed with the image
+  hsv_h: 0.015
+  hsv_s: 0.5
+  hsv_v: 0.4
+  degrees: 0.0                    # roll is already randomized in the renders
+  translate: 0.1
+  scale: 0.4
+  fliplr: 0.5                     # a mirrored soccer field is still a soccer field
+  flipud: 0.0
+  mosaic: 1.0
+  close_mosaic: 8                 # last epochs without mosaic
+  mixup: 0.0

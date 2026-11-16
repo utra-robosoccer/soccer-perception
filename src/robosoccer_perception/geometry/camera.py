@@ -80,13 +80,16 @@ class RigState:
 
     The rig frame is the midpoint between the two optical centres with body-style axes.
     ``pitch`` is a right-handed rotation about the base +y axis, so positive pitch looks DOWN;
-    ``pan`` is a rotation about base +z, so positive pan looks LEFT. Angles in radians.
+    ``pan`` is a rotation about base +z, so positive pan looks LEFT. ``roll`` is a right-handed
+    rotation about the viewing direction (applied last), so positive roll tips the camera's
+    right side down and the horizon appears tilted counter-clockwise. Angles in radians.
     """
     height: float
     pitch: float
     pan: float = 0.0
     forward_offset: float = 0.0
     lateral_offset: float = 0.0
+    roll: float = 0.0
 
     def replace(self, **changes) -> "RigState":
         return dataclasses.replace(self, **changes)
@@ -170,6 +173,8 @@ class StereoCameraModel:
     def T_base_rig(self, rig: RigState | None = None) -> np.ndarray:
         rig = rig or self.config.mount
         rotation = tf.rot_z(rig.pan) @ tf.rot_y(rig.pitch)
+        if rig.roll:                     # skipped at zero so that roll-free poses are unchanged
+            rotation = rotation @ tf.rot_x(rig.roll)
         return tf.make_transform(rotation, [rig.forward_offset, rig.lateral_offset, rig.height])
 
     def T_rig_optical(self, side: str = "left") -> np.ndarray:

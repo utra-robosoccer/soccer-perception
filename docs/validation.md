@@ -3,6 +3,11 @@
 What has been checked, what the numbers are, what failed, and what has not been validated.
 Regenerate everything here with `pytest` and `scripts/benchmark.py`.
 
+This document covers **Phase 1** (localization on oracle observations) and is unchanged by
+Phase 2 except for this note. The vision pipeline's tests and results are in
+[vision_validation.md](vision_validation.md). The 172 tests and the benchmark below were
+re-run after Phase 2 was added; see that document for the outcome.
+
 ## Automated tests
 
 172 tests, all passing on the development machine (Ubuntu, Python 3.12.3, MuJoCo 3.4.0,

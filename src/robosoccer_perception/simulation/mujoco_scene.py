@@ -8,6 +8,11 @@ involved. Only kinematics are evaluated (``mj_forward``); physics is never stepp
 body carries a simple placeholder shape; a humanoid model can replace it later without touching
 the cameras, because the rig is positioned from ``T_field_base @ T_base_rig`` on every update.
 
+For vision datasets the scene configuration may also list other robots (kinematic humanoid
+placeholders, ``robots``), a backdrop (``background``) and a ball look; see
+`simulation/scene_objects.py`. `MujocoScene.render_segmentation` returns the geom id seen at
+every pixel, which is what dataset labels are derived from (`datasets/annotation.py`).
+
 Importing this module requires the ``mujoco`` package (the ``sim`` extra).
 """
 from __future__ import annotations
@@ -27,9 +32,12 @@ from robosoccer_perception.geometry import transforms as tf  # noqa: E402
 from robosoccer_perception.geometry.camera import (  # noqa: E402
     CameraIntrinsics, RigState, StereoCameraConfig, StereoCameraModel)
 from robosoccer_perception.geometry.field import FieldGeometry, sample_arc  # noqa: E402
+from robosoccer_perception.simulation import scene_objects  # noqa: E402
 from robosoccer_perception.simulation.ground_truth import GroundTruth  # noqa: E402
 
 PLATFORM_GROUP = 1          # geom group of the placeholder robot; hidden in its own cameras
+NET_GROUP = 2               # goal nets: drawn in colour images, ignored by segmentation renders
+ISOLATION_GROUP = 5         # scratch group used to render one object on its own
 PIXEL_PITCH = 3.0e-6        # metres; only sets the scale of MuJoCo's metric sensor description
 LEFT_CAMERA, RIGHT_CAMERA, OVERVIEW_CAMERA = "zed_left", "zed_right", "overview"
 
@@ -71,6 +79,16 @@ def _turf_texture(turf: dict[str, Any]) -> tuple[np.ndarray, float]:
     grain = rng.normal(0.0, float(turf["noise"]), size=(size, size))
     grain = 0.5 * grain + 0.25 * (np.roll(grain, 1, 0) + np.roll(grain, 1, 1))   # soften, tileable
     image = image * (1.0 + grain[..., None])
+    blotch = float(turf.get("blotch", 0.0))
+    if blotch > 0.0:
+        # Large soft patches (wear, uneven pile): a few low spatial frequencies, tileable.
+        v, u = np.mgrid[0:size, 0:size] * (2.0 * np.pi / size)
+        patches = np.zeros((size, size))
+        for _ in range(4):
+            fu, fv = rng.integers(1, 4, 2)
+            patches += np.sin(fu * u + rng.uniform(0, 2 * np.pi)) \
+                * np.sin(fv * v + rng.uniform(0, 2 * np.pi))
+        image = image * (1.0 + blotch * patches[..., None] / 2.0)
     return (np.clip(image, 0.0, 1.0) * 255).astype(np.uint8), tile_m
 
 
@@ -87,8 +105,10 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
     lighting = scene_cfg["lighting"]
     k = camera_cfg.intrinsics
     k_overview = overview_intrinsics(field, scene_cfg)
-    spec.visual.global_.offwidth = max(k.width, k_overview.width)
-    spec.visual.global_.offheight = max(k.height, k_overview.height)
+    # ``offscreen_scale`` > 1 leaves room for supersampled segmentation renders (dataset labels).
+    offscreen_scale = int(scene_cfg.get("offscreen_scale", 1))
+    spec.visual.global_.offwidth = max(k.width * offscreen_scale, k_overview.width)
+    spec.visual.global_.offheight = max(k.height * offscreen_scale, k_overview.height)
     spec.visual.headlight.ambient = [float(lighting["ambient"])] * 3
     spec.visual.headlight.diffuse = [0.0] * 3
     spec.visual.headlight.specular = [0.0] * 3
@@ -174,15 +194,11 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
             for label, (pos, size) in panels.items():
                 world.add_geom(name=f"{goal.name}/net_{label}", type=mujoco.mjtGeom.mjGEOM_BOX,
                                pos=pos, size=size, rgba=net_rgba, material="matte",
-                               contype=0, conaffinity=0)
+                               group=NET_GROUP, contype=0, conaffinity=0)
 
     # ---- ball
     ball_cfg = scene_cfg["ball"]
-    ball_tex = spec.add_texture(name="ball", type=mujoco.mjtTexture.mjTEXTURE_CUBE,
-                                builtin=mujoco.mjtBuiltin.mjBUILTIN_CHECKER, width=64, height=64)
-    ball_tex.rgb1, ball_tex.rgb2 = [0.95, 0.95, 0.95], [0.08, 0.08, 0.08]
-    ball_mat = spec.add_material(name="ball", reflectance=0.0, specular=0.1, shininess=0.1)
-    ball_mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "ball"
+    scene_objects.add_ball_material(spec, ball_cfg)
     ball = world.add_body(name="ball", mocap=True,
                           pos=[*ball_cfg["position"], float(ball_cfg["radius"])])
     ball.add_geom(name="ball", type=mujoco.mjtGeom.mjGEOM_SPHERE, material="ball",
@@ -195,9 +211,15 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
         light = world.add_light(name=f"light_{i}", pos=(-20.0 * direction).tolist(),
                                 dir=direction.tolist())
         light.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
-        light.diffuse = [float(light_cfg["diffuse"])] * 3
+        tint = light_cfg.get("rgb", [1.0, 1.0, 1.0])
+        light.diffuse = [float(light_cfg["diffuse"]) * float(c) for c in tint]
         light.specular = [float(light_cfg.get("specular", 0.0))] * 3
         light.castshadow = bool(light_cfg.get("cast_shadow", False) and lighting["shadows"])
+
+    # ---- other robots (kinematic humanoid placeholders) and the backdrop; both optional
+    for index, appearance in enumerate(scene_cfg.get("robots") or []):
+        scene_objects.add_humanoid(world, f"robot{index}", appearance)
+    scene_objects.add_background(world, field, scene_cfg.get("background"))
 
     # ---- camera platform: placeholder body, stereo rig, cameras
     mount = camera_cfg.mount
@@ -247,6 +269,16 @@ class _PlatformState:
     base_pose: np.ndarray
     rig: RigState
     ball_position: np.ndarray
+    ball_quat: np.ndarray = dataclasses.field(default_factory=lambda: np.array([1.0, 0, 0, 0]))
+    robots: list = dataclasses.field(default_factory=list)      # RobotState | None per robot
+
+
+@dataclasses.dataclass(frozen=True)
+class _RobotHandle:
+    name: str
+    mocap_id: int
+    qpos_addresses: np.ndarray          # one per scene_objects.HUMANOID_JOINTS
+    geom_ids: np.ndarray
 
 
 class MujocoScene:
@@ -269,7 +301,19 @@ class MujocoScene:
         self._state = _PlatformState(
             np.zeros(3), self.camera_cfg.mount,
             np.array([*ball_cfg["position"], float(ball_cfg["radius"])], dtype=float))
-        self._renderers: dict[tuple[int, int], mujoco.Renderer] = {}
+        self._robots: list[_RobotHandle] = []
+        for index in range(len(self.scene_cfg.get("robots") or [])):
+            name = f"robot{index}"
+            body_ids = [b for b in range(self.model.nbody)
+                        if self.model.body(b).name == name
+                        or self.model.body(b).name.startswith(f"{name}/")]
+            self._robots.append(_RobotHandle(
+                name, int(self.model.body_mocapid[self.model.body(name).id]),
+                np.array([self.model.joint(f"{name}/{joint}").qposadr[0]
+                          for joint in scene_objects.HUMANOID_JOINTS]),
+                np.flatnonzero(np.isin(self.model.geom_bodyid, body_ids))))
+        self._state.robots = [None] * len(self._robots)
+        self._renderers: dict[tuple, mujoco.Renderer] = {}
         self._apply()
 
     # ------------------------------------------------------------------ scripted control
@@ -301,13 +345,37 @@ class MujocoScene:
     def rotate_in_place(self, angle: float) -> None:
         self.teleport(self._state.base_pose + [0.0, 0.0, angle])
 
-    def set_ball(self, position) -> None:
-        """Move the ball. A 2-D position puts it on the ground."""
+    def set_ball(self, position, quat=None) -> None:
+        """Move the ball. A 2-D position puts it on the ground. ``None`` hides it.
+
+        ``quat`` (w, x, y, z) optionally turns the ball, which changes the visible pattern.
+        """
+        if position is None:
+            position = scene_objects.PARKED_POSITION
         position = np.asarray(position, dtype=float)
         if position.shape == (2,):
             position = np.array([*position, float(self.scene_cfg["ball"]["radius"])])
         self._state.ball_position = position
+        if quat is not None:
+            self._state.ball_quat = np.asarray(quat, dtype=float) / np.linalg.norm(quat)
         self._apply()
+
+    @property
+    def num_robots(self) -> int:
+        """Number of other robots (humanoid placeholders) built into this scene."""
+        return len(self._robots)
+
+    def set_robots(self, states) -> None:
+        """Place the other robots. ``states`` has one `scene_objects.RobotState` or ``None``
+        (hidden) per robot; a shorter list hides the remaining robots."""
+        states = list(states)
+        if len(states) > len(self._robots):
+            raise ValueError(f"this scene has {len(self._robots)} robots, got {len(states)} states")
+        self._state.robots = states + [None] * (len(self._robots) - len(states))
+        self._apply()
+
+    def robot_geom_ids(self, index: int) -> np.ndarray:
+        return self._robots[index].geom_ids.copy()
 
     def follow(self, trajectory, step: int) -> None:
         """Jump to step ``step`` of a `Trajectory`, including its head motion and time."""
@@ -332,8 +400,25 @@ class MujocoScene:
             self.data.mocap_pos[self._mocap[name]] = transform[:3, 3]
             self.data.mocap_quat[self._mocap[name]] = tf.quat_wxyz_from_matrix(transform[:3, :3])
         self.data.mocap_pos[self._mocap["ball"]] = state.ball_position
+        self.data.mocap_quat[self._mocap["ball"]] = state.ball_quat
         self.data.time = self.time
+        standing = []
+        for handle, robot in zip(self._robots, state.robots):
+            if robot is None:
+                self.data.mocap_pos[handle.mocap_id] = scene_objects.PARKED_POSITION
+                continue
+            self.data.mocap_pos[handle.mocap_id] = [robot.xy[0], robot.xy[1], 0.0]
+            self.data.mocap_quat[handle.mocap_id] = tf.quat_wxyz_from_matrix(
+                scene_objects.fallen_rotation(robot.yaw, robot.fallen))
+            self.data.qpos[handle.qpos_addresses] = robot.joints
+            standing.append(handle)
         mujoco.mj_forward(self.model, self.data)
+        if standing:
+            # Whatever the limb pose or fall direction, rest the lowest point on the ground.
+            for handle in standing:
+                self.data.mocap_pos[handle.mocap_id][2] -= scene_objects.lowest_point_z(
+                    self.model, self.data, handle.geom_ids)
+            mujoco.mj_forward(self.model, self.data)
 
     # ------------------------------------------------------------------ ground truth
     def camera_pose(self, camera_name: str) -> np.ndarray:
@@ -366,6 +451,49 @@ class MujocoScene:
         option.geomgroup[PLATFORM_GROUP] = int(show_platform)
         renderer.update_scene(self.data, camera=camera_name, scene_option=option)
         return renderer.render().copy()
+
+    def render_segmentation(self, camera_name: str, scale: int = 1,
+                            only_geoms=None) -> np.ndarray:
+        """The id of the geom seen at every pixel, ``(H * scale, W * scale)`` int32.
+
+        Pixels that show no geom (sky) are -1. The camera platform and the goal nets are left
+        out: the platform never appears in its own cameras, and the nets are see-through, so
+        what stands behind a net counts as seen. No anti-aliasing is applied; each pixel is
+        the geom at its centre. With ``scale`` > 1 the same view is sampled on a finer grid
+        (pixel ``(v, u)`` of the camera covers the block ``[v*scale:(v+1)*scale,
+        u*scale:(u+1)*scale]``), which needs ``offscreen_scale >= scale`` in the scene config.
+
+        ``only_geoms`` renders just those geoms, as if nothing else existed: the un-occluded
+        (amodal) silhouette of an object.
+        """
+        width, height = (int(v) * scale for v in
+                         self.model.cam_resolution[self.model.camera(camera_name).id])
+        if (width > self.model.vis.global_.offwidth
+                or height > self.model.vis.global_.offheight):
+            raise ValueError(f"segmentation at scale {scale} needs an offscreen buffer of "
+                             f"{width}x{height}; set 'offscreen_scale: {scale}' in the scene "
+                             "configuration")
+        renderer = self._renderers.get((height, width, "segmentation"))
+        if renderer is None:
+            renderer = mujoco.Renderer(self.model, height=height, width=width)
+            renderer.enable_segmentation_rendering()
+            self._renderers[(height, width, "segmentation")] = renderer
+        option = mujoco.MjvOption()
+        option.geomgroup[PLATFORM_GROUP] = 0
+        option.geomgroup[NET_GROUP] = 0
+        if only_geoms is None:
+            renderer.update_scene(self.data, camera=camera_name, scene_option=option)
+            return renderer.render()[..., 0].copy()
+        only_geoms = np.asarray(only_geoms, dtype=int)
+        saved = self.model.geom_group[only_geoms].copy()
+        option.geomgroup[:] = 0
+        option.geomgroup[ISOLATION_GROUP] = 1
+        try:
+            self.model.geom_group[only_geoms] = ISOLATION_GROUP
+            renderer.update_scene(self.data, camera=camera_name, scene_option=option)
+            return renderer.render()[..., 0].copy()
+        finally:
+            self.model.geom_group[only_geoms] = saved
 
     def render_overview(self, show_platform: bool = True) -> np.ndarray:
         """Top-down image of the whole carpet: image right = field +x, image up = field +y."""

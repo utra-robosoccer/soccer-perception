@@ -34,9 +34,43 @@ configs/fields/*.yaml
 | `evaluation/` | `scenarios.py`, `metrics.py`, `benchmark.py` | NumPy |
 | `visualization/` | `field_plot.py`, `diagnostics.py`, `camera_overlay.py`, `style.py` | Matplotlib |
 
-MuJoCo is imported only by the two rendering modules. Geometry, the oracle, the localizer and
+MuJoCo is imported only by the rendering modules. Geometry, the oracle, the localizer and
 the benchmarks run without it, which keeps the test suite fast and lets the localizer be reused
 on the robot later.
+
+## Phase 2: the vision side
+
+A second, separate chain turns the same simulator into training data and models:
+
+```
+ MuJoCo scene (+ robots, backdrop) ──► colour image ─────────────┐
+        │                                                        ▼
+        └─► geom-id image ─► boxes + semantic mask ─► dataset ─► training ─► detector, segmenter
+            (labels read from the renderer)                                        │
+                                                                                   ▼
+                                          any RGB image ─► VisionPipeline ─► VisionResult
+                                                                             (boxes, mask, timings)
+```
+
+| Package | Contents | Needs |
+|---|---|---|
+| `simulation/scene_objects.py` | humanoid placeholders, ball looks, backdrop | MuJoCo |
+| `datasets/` | `schema.py` (class ids, label policy), `annotation.py` (labels from geom ids), `randomization.py`, `sampling.py` (viewpoints and layouts), `image_aug.py`, `generator.py`, `io.py` | MuJoCo, OpenCV |
+| `detection/` | `yolo.py` (the only module that imports Ultralytics), `metrics.py`, `evaluation.py` | PyTorch, Ultralytics (metrics: NumPy only) |
+| `segmentation/` | `model.py`, `data.py`, `losses.py`, `trainer.py`, `metrics.py`, `evaluation.py`, `segmenter.py`, `export.py` | PyTorch, OpenCV |
+| `inference/` | `types.py` (what vision outputs), `pipeline.py`, `geometry.py` (inspection utilities), `profiling.py` | NumPy; models are passed in |
+
+The two chains share `geometry/` and `simulation/` and nothing else. The vision packages do not
+import `observations/`, `localization/` or `evaluation/`, and those do not import the vision
+packages, PyTorch or OpenCV (`tests/test_vision_pipeline.py` checks both directions). The link
+between them, vision outputs to `ObservationFrame`, is Phase 3:
+[phase3_interfaces.md](phase3_interfaces.md).
+
+Design rules 1 to 5 below apply to Phase 2 as well, with two additions:
+
+- **Labels come from rendering, not from intention.** A box exists because pixels show the
+  object, never because a sampler meant the object to be visible.
+- **Models see images only.** Ground truth is read after inference, to score it.
 
 ## Design rules
 
@@ -78,7 +112,9 @@ moved kinematically. The platform is a mocap body with a placeholder shape; see
 |---|---|
 | A field size | a new `configs/fields/*.yaml` |
 | The calibrated ZED Mini | a new `configs/cameras/*.yaml` (and a distortion model in `geometry/camera.py`) |
-| Real perception | produce `ObservationFrame`s from images instead of from `OracleObservationGenerator` |
+| Real perception | produce `ObservationFrame`s from `VisionResult`s instead of from `OracleObservationGenerator` (Phase 3) |
+| Another detector or segmenter | a class with `predict(image_rgb)` returning `Detection`s or a `Segmentation` |
+| A dataset variant | a new `configs/datasets/*.yaml` or `configs/randomization/*.yaml` |
 | Real odometry | produce `OdometryDelta`s from the walking engine / IMU |
-| A humanoid model | replace the placeholder geoms of the `base` body in `build_spec` |
+| A humanoid model | replace the placeholder geoms of the `base` body in `build_spec`; for other robots, `scene_objects.add_humanoid` |
 | A ROS 2 node | wrap `ParticleFilter.step`; publish `map -> odom` from `PoseEstimate` |
