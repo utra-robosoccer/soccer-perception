@@ -1,0 +1,21 @@
+# RoboCup Humanoid Soccer League 2026 rulebook (dated 2026-06-29), Small Field.
+# All lengths in metres. Per the rulebook, every dimension is measured to the OUTSIDE of the lines.
+name: s_field
+length: 9.0                    # outer edge of one goal line to outer edge of the other
+width: 6.0                     # outer edge of one touchline to outer edge of the other
+line_width: 0.05
+border_strip_width: 1.0        # rulebook minimum
+goal_area_depth: 1.0
+goal_area_width: 3.0
+penalty_area_depth: 2.0
+penalty_area_width: 4.0
+penalty_mark_distance: 1.5     # outer edge of the goal line to the centre of the mark
+center_circle_diameter: 1.5
+corner_arc_radius: 0.0         # 0 = no corner arcs
+goal:
+  width: 1.8                   # rulebook range 1.8-1.9; inner distance between the posts
+  depth: 0.6                   # rulebook range 0.5-1.0
+  # --- Assumptions: not given in the task specification, confirm against the rulebook. ---
+  height: 1.2                  # ground to the lower edge of the crossbar
+  post_diameter: 0.10
+mark_size: 0.15                # ASSUMPTION: arm length of the penalty / centre mark crosses

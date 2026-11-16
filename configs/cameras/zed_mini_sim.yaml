@@ -1,0 +1,31 @@
+# SIMULATED / APPROXIMATE Stereolabs ZED Mini profile. These are NOT factory calibration values.
+#
+# Source of the numbers: the public ZED Mini datasheet (63 mm baseline, roughly 90 deg horizontal
+# by 60 deg vertical field of view, HD720 at up to 60 fps). The intrinsics below are an ideal
+# pinhole chosen to match that field of view: no lens distortion, square pixels, principal point
+# at the image centre, identical left and right cameras, perfectly parallel optical axes.
+# Replace this file with the calibration of the physical camera once it has been measured.
+name: zed_mini_sim
+approximate: true
+baseline: 0.063                # metres, between the two optical centres
+frame_rate: 30.0               # Hz
+image:
+  width: 1280
+  height: 720
+intrinsics:
+  # Pixel units, OpenCV / ROS convention: integer coordinates are pixel centres, u right, v down.
+  fx: 640.0                    # => horizontal FOV = 2 atan(1280 / (2 * 640)) = 90.0 deg
+  fy: 640.0                    # => vertical FOV   = 2 atan(720 / (2 * 640))  = 58.7 deg
+  cx: 639.5                    # (width - 1) / 2
+  cy: 359.5                    # (height - 1) / 2
+mount:
+  # Pose of the stereo rig centre (midpoint between the optical centres) in the robot base frame.
+  # PLACEHOLDER: the final robot's head geometry is not known yet.
+  forward_offset: 0.05         # metres along base +x
+  lateral_offset: 0.0          # metres along base +y
+  height: 0.90                 # metres above the ground
+  pitch_deg: 25.0              # positive = looking down (right-handed rotation about base +y)
+  pan_deg: 0.0                 # positive = looking left (rotation about base +z)
+clip:
+  near: 0.05                   # metres
+  far: 60.0

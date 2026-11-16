@@ -1,0 +1,21 @@
+# RoboCup Humanoid Soccer League 2026 rulebook (dated 2026-06-29), Large Field.
+# All lengths in metres. Per the rulebook, every dimension is measured to the OUTSIDE of the lines.
+name: l_field
+length: 22.0
+width: 14.0
+line_width: 0.12
+border_strip_width: 1.0        # rulebook minimum
+goal_area_depth: 1.0
+goal_area_width: 5.0
+penalty_area_depth: 3.5
+penalty_area_width: 7.0
+penalty_mark_distance: 2.5
+center_circle_diameter: 4.0
+corner_arc_radius: 1.0
+goal:
+  width: 3.0                   # rulebook range 2.6-3.1; inner distance between the posts
+  depth: 1.2                   # rulebook range 1.0-2.0
+  # --- Assumptions: not given in the task specification, confirm against the rulebook. ---
+  height: 1.8
+  post_diameter: 0.12
+mark_size: 0.30                # ASSUMPTION

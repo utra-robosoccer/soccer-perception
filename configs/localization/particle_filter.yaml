@@ -1,0 +1,58 @@
+# 3-DOF Monte Carlo localizer. See docs/localization.md for what each group does.
+num_particles: 1000
+resample_ess_fraction: 0.5          # resample when the effective sample size drops below this share of N
+init_position_std: 0.30             # metres; default spread of a Gaussian initialisation
+init_yaw_std_deg: 10.0
+
+recovery:
+  alpha_slow: 0.02                  # smoothing of the long-term measurement agreement
+  alpha_fast: 0.10                  # smoothing of the short-term measurement agreement
+  max_injection_fraction: 0.25      # at most this share of particles is replaced per resampling
+  injection_trigger: 0.10           # adaptive share above which a resampling is forced
+  background_injection_fraction: 0.01   # share replaced at every ordinary resampling
+  sensor_reset_fraction: 0.7        # share of injected particles drawn from the current observations
+  injected_particle_weight: 0.1     # weight of an injected particle relative to a resampled survivor
+  symmetry_prior: same_side         # same_side | none (see docs/localization.md, "Field symmetry")
+  anchor_hold_updates: 20           # consecutive converged updates before the side anchor follows the estimate
+  maintain_symmetry: true           # with no side information, keep both mirror-image hypotheses alive
+
+motion:
+  translation_noise: 0.15           # m of error per m walked
+  rotation_noise: 0.15              # rad of error per rad turned
+  translation_from_rotation: 0.02   # m per rad
+  rotation_from_translation_deg: 4.0
+  min_translation_std: 0.004        # m per update
+  min_rotation_std_deg: 0.2
+  use_reported_covariance: false
+  missing_translation_std: 0.04     # m per update without odometry
+  missing_rotation_std_deg: 4.0
+
+measurement:
+  distance_map_resolution: 0.025    # metres
+  use_line_points: true
+  max_line_points: 40               # line points used per update (random subset)
+  line_std_floor: 0.05              # m, added in quadrature to each point's reported std
+  line_outlier_floor: 0.10          # likelihood of a point that matches no line (perfect match = 1)
+  line_point_weight: 0.3            # exponent per point; < 1 because neighbouring points are correlated
+  use_landmarks: true
+  correspondence: nearest           # nearest | mixture
+  landmark_std_scale: 1.5           # inflate reported landmark stds
+  landmark_range_std_floor: 0.05    # m
+  landmark_bearing_std_floor_deg: 1.5
+  landmark_outlier_floor: 0.05      # likelihood of a landmark that matches nothing of its class
+  landmark_weight: 1.0
+  off_field_log_penalty: -20.0      # log-likelihood added to particles outside the carpet
+
+estimator:
+  cell_size: 0.4                    # metres; position bin of the mode search
+  yaw_bin_deg: 30.0
+  max_modes: 3
+  min_mode_weight: 0.05
+  converged_min_mode_weight: 0.7
+  converged_max_position_std: 0.25  # metres
+  converged_max_yaw_std_deg: 10.0
+  confidence_position_scale: 0.30   # metres
+  confidence_yaw_scale_deg: 15.0
+  mirror_position_tolerance: 0.8    # metres; a mode this close to the mirrored estimate is "the mirror"
+  mirror_yaw_tolerance_deg: 45.0
+  mirror_weight_ratio: 0.25         # mirror mode weight / dominant mode weight that flags ambiguity
