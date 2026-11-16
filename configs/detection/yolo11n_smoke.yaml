@@ -1,0 +1,19 @@
+# Smoke test of the detector training loop: 2 epochs on the 64-frame smoke dataset, small
+# images, CPU-friendly. Proves that training, checkpointing and loading work. The resulting
+# model is NOT a usable detector.
+name: yolo11n_smoke
+model: yolo11n.pt
+dataset: outputs/datasets/smoke
+output: outputs/detection
+imgsz: 320
+epochs: 2
+patience: 5
+batch: 8
+workers: 0
+device: auto
+amp: false
+seed: 0
+deterministic: true
+plots: false
+augment:
+  mosaic: 0.0
