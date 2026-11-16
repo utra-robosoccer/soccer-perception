@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "robosoccer-perception"
 version = "0.1.0"
-description = "UTRA RoboSoccer perception and localization research: RoboCup field simulation, virtual ZED Mini stereo camera, oracle landmark observations and a 3-DOF particle-filter localizer."
+description = "UTRA RoboSoccer perception and localization research: RoboCup field simulation, virtual ZED Mini stereo camera, oracle landmark observations, a 3-DOF particle-filter localizer, and a synthetic-data vision pipeline (object detection and field-line segmentation)."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 # The core (geometry, observations, localization, evaluation) needs only these two.
@@ -21,6 +21,19 @@ sim = ["mujoco==3.4.0"]
 viz = ["matplotlib>=3.8,<4"]
 dev = ["pytest>=8,<10"]
 all = ["robosoccer-perception[sim,viz,dev]"]
+# Phase 2: synthetic datasets, detector and segmentation training, offline inference.
+# Heavy (PyTorch with CUDA is several GB), so it is NOT part of `all`:
+#   pip install -e ".[all,vision]"
+# Note: ultralytics (and the YOLO weights it distributes) is AGPL-3.0; see docs/object_detection.md.
+vision = [
+    "opencv-python>=4.8",
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "ultralytics>=8.3,<9",
+    "onnx>=1.15",
+    "onnxruntime>=1.17",
+    "psutil>=5.9",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -30,5 +43,6 @@ testpaths = ["tests"]
 addopts = "-ra"
 markers = [
     "render: needs an OpenGL context for MuJoCo offscreen rendering (skipped when unavailable)",
-    "slow: runs a full localization scenario",
+    "slow: runs a full localization scenario or a model training smoke test",
+    "vision: needs the 'vision' extra (PyTorch, Ultralytics, OpenCV); skipped when it is missing",
 ]

@@ -25,8 +25,10 @@ for another resolution with the same field of view.
 `geometry/camera.py` (pure NumPy) defines the model used by both the renderer and the oracle:
 
 - `CameraIntrinsics`: pinhole projection `u = fx X/Z + cx`, `v = fy Y/Z + cy`.
-- `RigState`: height, pitch, pan and offsets of the rig centre on the robot. It can change
-  every frame (head motion).
+- `RigState`: height, pitch, pan, roll and offsets of the rig centre on the robot. It can
+  change every frame (head motion). Roll (rotation about the viewing direction, zero by
+  default) was added in Phase 2 so that datasets can include a tilted horizon; a zero roll
+  leaves every Phase 1 pose bit-identical.
 - `StereoCameraModel`: `T_base_rig`, `T_rig_optical(side)`, `T_field_camera`, `T_left_right`,
   `project_field_points`, and `disparity(depth) = fx * baseline / Z`.
 
@@ -65,10 +67,10 @@ images from the same simulation state (exactly synchronized) and returns a `Ster
 |---|---|
 | Lens distortion | Real ZED Mini images must be rectified (the SDK does this) before these intrinsics mean anything. |
 | Rolling shutter, motion blur | Walking shakes the head; real frames will be blurrier and skewed. |
-| Exposure, white balance, sensor noise, vignetting | Detectors trained on these renders alone will not transfer. |
+| Exposure, white balance, sensor noise, vignetting | Not in the camera itself. The Phase 2 dataset generator adds them in image space as domain randomization ([synthetic_data.md](synthetic_data.md)); that widens the training distribution but is not a model of the ZED Mini's sensor. |
 | Stereo miscalibration | Real rigs have small rotation between the cameras; here it is exactly zero. |
 | Depth | No depth image is produced and the ZED depth algorithm is not imitated. Disparity is available only as geometry. |
-| Turf, lighting, crowd, other robots | The scene is clean: procedural turf, two directional lights, an empty hall. |
+| Turf, lighting, crowd, other robots | The default scene is clean: procedural turf, two directional lights, an empty hall. Phase 2 can add placeholder robots, walls and boxes and vary turf and lighting, but there is still no crowd and nothing photorealistic. |
 
 The ZED SDK is not a dependency.
 

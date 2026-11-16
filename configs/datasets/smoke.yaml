@@ -1,0 +1,16 @@
+# Smoke-test dataset: 64 frames, generated in a few seconds. For tests and for checking that
+# the pipeline runs end to end. Far too small to train anything useful.
+name: smoke
+version: "1"
+seed: 7
+field: s_field                    # configs/fields/
+camera: zed_mini_sim              # configs/cameras/ (left eye is rendered)
+scene: default                    # configs/scenes/ (base appearance, before randomization)
+resolution: [640, 360]            # width, height; the camera's field of view is kept
+randomization: mild               # configs/randomization/; a split may override it
+splits:
+  train: {scenarios: 4, frames_per_scenario: 8}
+  val:   {scenarios: 2, frames_per_scenario: 8}
+  test:  {scenarios: 2, frames_per_scenario: 8}
+image_format: jpg                 # jpg | png
+jpeg_quality: 95

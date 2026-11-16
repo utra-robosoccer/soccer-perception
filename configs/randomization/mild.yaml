@@ -1,0 +1,74 @@
+# Mild visual randomization: plausible variation around one well-lit indoor field.
+# Ranges are [low, high], sampled uniformly, unless a comment says otherwise.
+# The camera section is sampled per frame, the scene section once per scenario (it is baked into
+# the MuJoCo model), the image section per frame.
+name: mild
+camera:
+  height_std: 0.04                # metres around the camera config's mount height (0.90 m)
+  height_limits: [0.78, 1.02]
+  pitch_std_deg: 5.0              # degrees around the mount pitch (25 deg down)
+  pitch_limits_deg: [10.0, 42.0]
+  roll_std_deg: 1.0
+  roll_limit_deg: 3.0
+  pan_range_deg: [-35.0, 35.0]
+scene:
+  enabled: true
+  turf:
+    hue: [0.28, 0.37]             # HSV hue of the base colour (0.33 = pure green)
+    saturation: [0.55, 0.80]
+    value: [0.30, 0.48]
+    stripe_contrast: [1.0, 1.25]  # stripe brightness relative to the base
+    stripe_width_choices: [0.0, 1.0, 1.0, 1.5]    # metres; 0 = no mowing stripes
+    noise: [0.06, 0.14]
+    blotch: [0.0, 0.08]
+  lines:
+    brightness: [0.85, 0.96]
+    tint: 0.02                    # per-channel +/- around neutral
+  lighting:
+    ambient: [0.32, 0.48]
+    key_diffuse: [0.38, 0.60]
+    key_elevation_deg: [50.0, 85.0]     # sun/lamp height above the horizon; azimuth is uniform
+    fill_diffuse: [0.08, 0.22]
+    tint: 0.03
+    shadow_prob: 0.85
+  surround:
+    brightness: [0.22, 0.42]
+    tint: 0.03
+  sky:
+    brightness: [0.60, 0.92]
+    tint: 0.06
+  background:
+    wall_prob: 0.4                # per side of the field
+    wall_distance: [1.5, 5.0]     # metres beyond the carpet edge
+    wall_height: [0.8, 3.0]
+    clutter_count: [0, 3]
+    distractor_prob: 0.15         # share of clutter painted white or turf-green
+  goal:
+    brightness: [0.88, 0.97]
+    tint: 0.02
+    net_alpha: [0.12, 0.30]
+  ball:
+    styles: {checker: 0.45, spots: 0.45, flat: 0.10}      # relative weights
+    radius: [0.066, 0.074]
+    light_brightness: [0.85, 0.97]
+    dark_value: [0.05, 0.25]
+    colored_prob: 0.2             # chance that the dark patches are a saturated colour
+  robots:
+    height: [0.55, 0.95]
+    build: [0.9, 1.15]
+    grey: [0.08, 0.75]            # torso / limb / head grey levels
+    tint: 0.04
+    colorful_prob: 0.0            # chance of a saturated body colour
+image:
+  enabled: true
+  exposure_gain: [0.88, 1.12]
+  gamma: [0.92, 1.08]
+  white_balance: 0.04             # per-channel gain 1 +/- this
+  saturation: [0.90, 1.10]
+  vignette: [0.0, 0.12]           # darkening at the image corners
+  defocus_sigma: [0.0, 0.5]       # px
+  motion_blur_prob: 0.10
+  motion_blur_px: [3, 3]
+  noise_std: [0.0, 3.0]           # grey levels of 255
+  jpeg_prob: 0.3
+  jpeg_quality: [75, 95]

@@ -1,0 +1,53 @@
+# Baseline dataset for a laptop: 2400 frames at 640x360, about 150 MB, generated in a few
+# minutes. This is the dataset behind the numbers in docs/vision_validation.md.
+#
+# Every key is optional except name and splits; the defaults are in
+# src/robosoccer_perception/datasets/{generator,sampling,schema}.py and are spelled out here
+# so that this file documents the whole configuration surface.
+name: baseline
+version: "1"
+seed: 2026
+field: s_field                    # configs/fields/
+camera: zed_mini_sim              # configs/cameras/ (left eye is rendered)
+scene: default                    # configs/scenes/ (base appearance, before randomization)
+resolution: [640, 360]            # width, height; the camera's field of view is kept
+randomization: mild               # configs/randomization/{none,mild,strong}; default for all splits
+
+# Splits are made of whole scenarios (one scene appearance each); see docs/synthetic_data.md.
+splits:
+  train: {scenarios: 80, frames_per_scenario: 20}
+  val:   {scenarios: 16, frames_per_scenario: 20}
+  test:  {scenarios: 24, frames_per_scenario: 20}
+
+image_format: jpg                 # jpg | png
+jpeg_quality: 95
+
+labels:                           # datasets/schema.py::LabelPolicy
+  supersample: 2                  # segmentation render is this many times finer than the image
+  line_coverage_threshold: 0.5    # share of a pixel that must be paint to label it field_line
+  min_visible_pixels: 6.0         # smaller objects get no box
+  min_box_side_px: 2.0
+  min_visible_fraction: 0.15      # more occluded objects get no box
+
+content:                          # datasets/sampling.py::DEFAULT_CONTENT
+  max_robots: 3                   # humanoid placeholders built into every scenario
+  ball_present_prob: 0.85
+  robot_present_prob: 0.55        # per robot
+  robot_fallen_prob: 0.12
+  in_view_prob: 0.65              # share of freely placed objects aimed into the camera view
+  camera_margin: 0.25             # metres the camera keeps from the carpet edge
+  max_range: 10.0                 # metres; farthest deliberate object placement
+
+modes:                            # relative weights of the frame layouts (sampling.py)
+  random: 0.30
+  ball_far: 0.08
+  ball_near_line: 0.08
+  ball_occluded: 0.08
+  ball_image_edge: 0.05
+  goal_view: 0.10
+  goal_post_edge: 0.05
+  robot_on_line: 0.07
+  robot_close: 0.05
+  empty_turf: 0.04
+  midfield: 0.05
+  touchline: 0.05
