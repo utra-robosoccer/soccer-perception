@@ -7,7 +7,6 @@ import pytest
 
 mujoco = pytest.importorskip("mujoco")
 
-from robosoccer_perception.geometry import transforms as tf  # noqa: E402
 from robosoccer_perception.geometry.camera import RigState, StereoCameraConfig  # noqa: E402
 from robosoccer_perception.simulation import scene_objects  # noqa: E402
 from robosoccer_perception.simulation.mujoco_scene import (  # noqa: E402

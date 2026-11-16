@@ -240,11 +240,42 @@ development laptop (RTX 2050, 4 GB) with nothing else on the GPU:
 
 | | |
 |---|---|
-| Latency | 8.1 ms mean, 8.9 ms p95 (about 120 frames per second) |
+| Latency, 640x360 input | 7.5 ms mean, 8.3 ms p95 (about 130 frames per second); 8.1 ms in a second run |
+| Latency, 1280x720 input | 11.4 ms mean (the extra time is resizing the larger image) |
+| Latency, 1280x720 input, CPU | 27 ms mean |
 | GPU memory, PyTorch tensors | 49 MB peak allocated, 66 MB reserved (plus the CUDA context, a few hundred MB, shared with anything else using PyTorch) |
 | Process RAM | 1.6 GB, mostly the PyTorch and CUDA libraries |
 
-No CPU or Jetson timing has been taken. `--device cpu` runs the same evaluation on the CPU.
+The 1280x720 and CPU figures come from `scripts/run_vision.py` on 8 and 4 frames
+respectively, so treat them as indicative. No timing has been taken on a Jetson or any other
+robot computer.
+
+### Outside the training distribution
+
+The same checkpoint, trained on `mild`, on test sets rendered with the other presets (same
+layouts, different appearance; 480 frames each):
+
+| Test set | mAP50 | mAP50-95 | Precision | Recall | False positives per image |
+|---|---|---|---|---|---|
+| `none` (default scene, no image effects) | 0.979 | 0.896 | 97.4 % | 98.0 % | 0.081 |
+| `mild` (the training distribution) | 0.982 | 0.878 | 98.0 % | 98.1 % | 0.065 |
+| `strong` (wider than training) | 0.913 | 0.744 | 90.7 % | 89.4 % | 0.279 |
+
+On `strong`, per class: ball AP50 0.883 (recall 83.7 %), goal_post 0.913 (88.3 %), robot 0.943
+(93.3 %). What breaks:
+
+- **Unoccluded balls are missed** (246 of 280 found, against 286 of 286 on `mild`). `strong`
+  balls are up to 11 cm in radius and may be coloured or plain; `mild` balls are 7 cm and
+  mostly black and white.
+- **Tall robots**: 259 of 290 robots of 1.0 m or more are found. The training set has none
+  taller than 0.95 m.
+- **Class confusions appear**: 27 robot and 23 goal-post false positives overlap an object of
+  the other class (0 and 1 on `mild`), and 20 goal-post false positives sit where nothing is,
+  16 of them on the backdrop, which in `strong` includes white walls and boxes.
+
+This is still synthetic data, but it is a preview of the kind of drop to expect on a real
+field, whose appearance is certainly outside the `mild` range. Training on `strong`, or on a
+mix, is the obvious next experiment; it has not been run.
 
 ## The grey margin: an inference detail that changes results
 
