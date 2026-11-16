@@ -1,0 +1,31 @@
+# Visual appearance of the MuJoCo scene. Geometry comes from the field configuration, never
+# from here. Colours are linear RGB in [0, 1].
+name: default
+turf:
+  base_rgb: [0.11, 0.38, 0.13]
+  stripe_rgb: [0.14, 0.45, 0.16]     # alternate mowing-stripe colour
+  stripe_width: 1.0                  # metres; 0 disables stripes
+  noise: 0.10                        # relative per-texel brightness variation (turf grain)
+  texture_px_per_m: 128
+  seed: 0
+surround_rgb: [0.30, 0.30, 0.32]     # floor outside the carpet
+line_rgb: [0.93, 0.93, 0.93]
+line_thickness: 0.002                # metres the paint stands above the turf (avoids z-fighting)
+arc_segment_length: 0.04             # metres; arcs are drawn as short straight pieces
+goal:
+  rgb: [0.95, 0.95, 0.95]
+  net_rgba: [1.0, 1.0, 1.0, 0.22]    # alpha 0 removes the net
+ball:
+  radius: 0.07                       # ASSUMPTION: ball size is not in the task specification
+  position: [1.0, 0.5]               # default position on the field, metres
+lighting:
+  ambient: 0.40
+  shadows: true
+  shadow_map_size: 4096
+  lights:                            # directional lights; direction is where the light travels
+    - {direction: [0.35, 0.25, -1.0], diffuse: 0.50, specular: 0.10, cast_shadow: true}
+    - {direction: [-0.5, -0.4, -1.0], diffuse: 0.15, specular: 0.0, cast_shadow: false}
+sky_rgb: [0.72, 0.80, 0.90]
+overview:
+  max_width_px: 1400                 # width of the top-down overview image
+  height_m: 40.0                     # camera height above the field centre

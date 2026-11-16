@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robosoccer-perception"
+version = "0.1.0"
+description = "UTRA RoboSoccer perception and localization research: RoboCup field simulation, virtual ZED Mini stereo camera, oracle landmark observations and a 3-DOF particle-filter localizer."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+# The core (geometry, observations, localization, evaluation) needs only these two.
+dependencies = [
+    "numpy>=1.26,<3",
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+# MuJoCo scene and stereo rendering. Same version as robosoccer-rl and soccer-software.
+sim = ["mujoco==3.4.0"]
+# Field plots, diagnostics and saving rendered frames as PNG.
+viz = ["matplotlib>=3.8,<4"]
+dev = ["pytest>=8,<10"]
+all = ["robosoccer-perception[sim,viz,dev]"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "render: needs an OpenGL context for MuJoCo offscreen rendering (skipped when unavailable)",
+    "slow: runs a full localization scenario",
+]
