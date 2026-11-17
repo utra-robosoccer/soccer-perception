@@ -52,10 +52,15 @@ Nothing above has been tried on a real image.
 ## Automated tests
 
 ```bash
-.venv/bin/python -m pytest                    # 408 tests, about 3 minutes
-.venv/bin/python -m pytest -m "not slow"      # 379 tests
-.venv/bin/python -m pytest -m "not vision and not render"   # 353 tests: no GPU, no OpenGL
+.venv/bin/python -m pytest                    # 469 tests, about 3.5 minutes
+.venv/bin/python -m pytest -m "not slow"      # 409 tests
+.venv/bin/python -m pytest -m "not vision and not render"   # 383 tests: no GPU, no OpenGL
 ```
+
+Of the 469, 408 are the tests of Phases 1 to 3 described here. The other 61 belong to the
+interactive viewer that was added after the benchmark ([viewer.md](viewer.md)); it changed no
+estimator, model or benchmark code, and one of its tests checks that a viewer session
+reproduces this benchmark's vision arm bit for bit.
 
 The 276 tests of Phases 1 and 2 pass unmodified; no existing test or source file was edited.
 Phase 3 adds 132:

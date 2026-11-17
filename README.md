@@ -76,6 +76,14 @@ PyTorch with CUDA libraries, Ultralytics and OpenCV: several GB of downloads.
 .venv/bin/python scripts/train_detector.py --download yolo11n.pt    # pretrained weights, 5 MB
 ```
 
+The interactive viewer needs one more extra, `viewer` (PySide6), and on Ubuntu the system
+package `libxcb-cursor0`; see [docs/viewer.md](docs/viewer.md).
+
+```bash
+.venv/bin/python -m pip install -e ".[all,vision,viewer]"
+sudo apt install libxcb-cursor0
+```
+
 Phase 1 does not need it, and its tests run without it (the vision tests are skipped).
 Ultralytics and the YOLO weights are AGPL-3.0; see
 [docs/object_detection.md](docs/object_detection.md#licensing).
@@ -104,7 +112,8 @@ Tests that render images are skipped automatically when no OpenGL context is ava
 tests that need PyTorch or Ultralytics when the `vision` extra is not installed. No test uses
 the network or needs downloaded weights. The Phase 3 tests that run the **trained** models
 (`tests/test_vision_localization_models.py`) are skipped until the checkpoints exist; all
-other Phase 3 tests use analytically painted views or a colour-threshold stand-in.
+other Phase 3 tests use analytically painted views or a colour-threshold stand-in. The
+viewer's window tests run without a screen and are skipped when PySide6 is not installed.
 
 ### Render the field and a stereo pair
 
@@ -250,6 +259,24 @@ Settings are in `configs/evaluation/vision_localization.yaml` (models, image siz
 sweep values) and `configs/perception/` (extraction and measurement-noise parameters).
 Results and their limits are in [docs/phase3_validation.md](docs/phase3_validation.md).
 
+### Watch the pipeline work (interactive viewer)
+
+One window with four synchronized panels: the camera image with the detector's boxes, the
+segmentation with the extracted features, the field from above with the particle cloud, the
+estimate and the true pose, and plots of error, confidence and latency. It runs any benchmark
+scenario live, pauses, steps, scrubs back through what it has shown, and replays recordings.
+
+```bash
+.venv/bin/python scripts/visualize_pipeline.py                      # v04_rectangle, paused
+.venv/bin/python scripts/visualize_pipeline.py v13a --autoplay      # any scenario, by prefix
+.venv/bin/python scripts/visualize_pipeline.py --replay outputs/viewer/recordings/<file>.npz
+.venv/bin/python scripts/visualize_pipeline.py v04 --headless --record --video   # no window
+```
+
+Keys: Space run / pause, Right / Left step, R reset, S screenshot, G ground truth. Recordings,
+videos and screenshots go to `outputs/viewer/`. Ground truth is displayed, never given to the
+estimator. Controls, panels and limits: [docs/viewer.md](docs/viewer.md).
+
 ### Use it from Python
 
 ```python
@@ -340,11 +367,13 @@ src/robosoccer_perception/
                    feature_metrics.py  feature_evaluation.py  benchmark.py  setup.py
   visualization/   field_plot.py  diagnostics.py  camera_overlay.py  style.py
                    vision_overlay.py  vision_plots.py  vision_localization_plots.py
+  viewer/          session.py  frame.py  recording.py  render.py  worker.py  headless.py
+                   app.py  qt_env.py   (the interactive debugging viewer)
 scripts/           render_field.py  run_localization.py  benchmark.py
                    generate_dataset.py  inspect_dataset.py  train_detector.py  evaluate_detector.py
                    train_segmentation.py  evaluate_segmentation.py  run_vision.py  export_models.py
                    run_vision_localization.py  benchmark_vision_localization.py
-                   evaluate_features.py
+                   evaluate_features.py  visualize_pipeline.py
 tests/             one file per area; see docs/validation.md, docs/vision_validation.md and
                    docs/phase3_validation.md
 docs/              the documents below
@@ -368,6 +397,7 @@ docs/              the documents below
 | [docs/geometric_perception.md](docs/geometric_perception.md) | Phase 3: ground projection, line points, goal posts, junctions, circle, the uncertainty model |
 | [docs/vision_localization.md](docs/vision_localization.md) | Phase 3: the camera-to-pose pipeline, the ground-truth boundary, benchmark arms and scenarios |
 | [docs/phase3_validation.md](docs/phase3_validation.md) | Phase 3: oracle versus vision versus odometry, calibration sensitivity, latency, failures, limits |
+| [docs/viewer.md](docs/viewer.md) | the interactive viewer: install, controls, what each panel shows, recordings, limits |
 
 ## Things to know before trusting a number
 

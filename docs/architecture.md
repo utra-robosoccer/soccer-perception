@@ -94,6 +94,7 @@ oracle on identical runs. Neither the vision pipeline nor the particle filter wa
 | `perception/` | `line_features.py`, `line_fitting.py`, `intersections.py`, `goal_features.py`, `uncertainty.py`, `extractor.py`, `observation_builder.py`, `types.py`, `config.py` | NumPy, OpenCV |
 | `pipeline/` | `vision_localization.py`: `VisionLocalizationPipeline.step(image, timestamp, odometry_delta, camera_calibration, estimated_camera_pose)` | the above; models are passed in |
 | `vision_benchmark/` | `camera_truth.py`, `sim_camera.py`, `scenarios.py`, `corruption.py`, `runner.py`, `feature_metrics.py`, `feature_evaluation.py`, `benchmark.py`, `setup.py` | MuJoCo |
+| `viewer/` | `session.py`, `frame.py`, `recording.py`, `render.py`, `worker.py`, `headless.py`, `app.py`, `qt_env.py` (the interactive debugging viewer) | MuJoCo, OpenCV; PySide6 for the window |
 
 `perception/` and `pipeline/` are the runtime. They import neither MuJoCo, nor `simulation/`,
 nor the oracle, nor `vision_benchmark/`. The benchmark is a package of its own, not part of
@@ -111,6 +112,16 @@ Two more rules:
 
 Details: [geometric_perception.md](geometric_perception.md),
 [vision_localization.md](vision_localization.md), [phase3_validation.md](phase3_validation.md).
+
+### The viewer
+
+`viewer/` is an observer on top of Phase 3 ([viewer.md](viewer.md)). `session.py` runs one
+benchmark scenario a frame at a time with the benchmark's own building blocks and random
+streams, calls `VisionLocalizationPipeline.step` exactly as the benchmark does, and packs
+each step into a `ViewerFrame`; `render.py` draws the four panels from that frame; a worker
+thread keeps the simulation and the networks away from the window. It adds no estimator
+code: the particle filter, the models, the extraction and the benchmark are untouched, and a
+session reproduces the benchmark's vision arm bit for bit.
 
 ## Design rules
 
