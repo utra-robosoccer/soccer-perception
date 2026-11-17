@@ -1,0 +1,81 @@
+# Geometric feature extraction: how predicted masks and boxes become metric features in the
+# robot's base frame. Mirrors perception/config.py::FeatureExtractionConfig (same defaults).
+# See docs/geometric_perception.md. Lengths in metres, angles in degrees, image sizes in pixels.
+name: default
+seed: 0                       # RANSAC sampling seed: extraction is repeatable frame by frame
+max_work_width: 640           # wider masks are reduced to this width before extraction
+
+projection:                   # which pixels may be put on the ground at all
+  min_depression_deg: 4.0     # rays flatter than this (closer to the horizon) are rejected
+  max_range: 6.0              # metres from the robot; one pixel is ~13 cm of ground out there
+  min_range: 0.25
+  image_margin_px: 2.0        # pixels this close to the image border are rejected
+
+lines:
+  min_confidence: 0.5         # line probability a pixel needs
+  min_component_area_px: 12   # smaller blobs of line pixels are treated as false positives
+  pixel_cell_px: 4            # one centreline pixel is kept per cell of this size
+  dense_ground_spacing: 0.06  # spacing of the points used for fitting lines and the circle
+  ground_spacing: 0.20        # spacing of the line points given to the localizer
+  max_points: 60              # line points per frame at most
+
+segments:                     # straight segments, fitted on the ground (sequential RANSAC)
+  enabled: true
+  max_range: 4.5
+  iterations: 200
+  inlier_tolerance: 0.03      # combined in quadrature with each point's pixel noise
+  max_tolerance: 0.12
+  min_points: 6
+  min_length: 0.5
+  max_gap: 0.30               # a larger gap in the support splits a line in two
+  max_segments: 10
+  merge_angle_deg: 8.0        # collinear pieces closer than this in direction ...
+  merge_offset: 0.08          # ... and across ...
+  merge_gap: 0.5              # ... and along are joined
+
+intersections:                # L / T / X from pairs of segments
+  enabled: true
+  max_range: 4.0
+  angle_tolerance_deg: 20.0   # the two lines must meet within this of a right angle
+  min_arm: 0.30               # a line must extend this far past the junction to count as an arm
+  end_tolerance: 0.12         # the junction may lie this far inside a segment's end
+  max_end_gap: 0.20           # ... or this far beyond it
+  probe_distances: [0.20, 0.35]     # points past a line's end that must be seen as turf
+  probe_min_field_confidence: 0.5
+  image_margin_px: 6.0        # a probe this close to the image border proves nothing
+  merge_distance: 0.30        # junctions closer than this are one junction
+
+circle:                       # centre circle: RANSAC with the KNOWN radius from the field map
+  enabled: true
+  max_center_range: 5.0
+  iterations: 200
+  inlier_tolerance: 0.04
+  max_tolerance: 0.12
+  min_arc_deg: 150.0          # a shorter visible arc does not give a reliable centre
+  min_inliers: 14
+  min_density: 0.5            # share of the spanned arc that must really hold points
+  angular_bin_deg: 15.0
+  purity_band: 0.15           # band around the fitted circle that is inspected ...
+  min_purity: 0.75            # ... and the share of the points in it that must support the circle
+                              # (rejects a circle laid tangent to straight lines)
+
+goal_posts:
+  enabled: true
+  min_confidence: 0.35
+  border_margin_px: 3.0       # a box this close to an image border is cut off there
+  max_range: 8.0              # beyond this a foot gives bearing only
+  min_range: 0.3
+  reject_range: 14.0          # a foot projected farther than this is not a post on this field
+  width_ratio_limits: [0.45, 2.2]   # observed / expected box width for a post at that range
+  height_ratio_min: 0.6       # observed / expected box height when the top is in view
+  foot_window_px: [9, 5]      # width, height of the mask patch inspected under the foot
+  foot_min_ground_fraction: 0.4     # share of that patch that must be turf or line
+  occluder_overlap: 0.25      # share of the foot strip covered by a robot or ball box
+
+observations:                 # which features are handed to the localizer
+  line_points: true
+  goal_posts: true
+  bearing_only_goal_posts: true
+  intersections: [L, T, X]
+  center_circle: true
+  max_landmarks: 12
