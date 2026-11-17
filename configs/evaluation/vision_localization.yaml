@@ -1,0 +1,35 @@
+# Phase 3 benchmark settings: which models, which image size, which configurations.
+# Used by scripts/benchmark_vision_localization.py, scripts/run_vision_localization.py and
+# scripts/evaluate_features.py. See docs/phase3_validation.md.
+name: default
+camera: zed_mini_sim                # configs/cameras/: the robot's NOMINAL calibration
+resolution: [640, 360]              # the size the models were trained at (the camera's 16:9 view)
+
+# Trained Phase 2 checkpoints (not tracked by Git; see README, "Vision").
+detector: outputs/detection/yolo11n/weights/best.pt
+segmenter: outputs/segmentation/unet_small/best.pt
+device: auto                        # auto | cpu | cuda:0
+detector_confidence: 0.25
+detector_imgsz: 640                 # the detector's 16 px grey margin is added on top of this
+half: false                         # FP16 inference (GPU only)
+
+feature_extraction: feature_extraction      # configs/perception/
+measurement_noise: measurement_noise        # configs/perception/
+filter_config: particle_filter              # configs/localization/ (Phase 1's, unchanged)
+filter_overrides: {}                        # applied to every arm
+vision_filter_overrides: {}                 # applied on top to the image-fed arms only
+
+seeds: 5                            # seeds 0 .. N-1 for the benchmark
+
+sweep:                              # calibration sensitivity (error = estimate minus truth)
+  scenario: v04_rectangle
+  seeds: 3
+  parameters:
+    pitch_deg: [-3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0]
+    height_m: [-0.10, -0.05, -0.02, 0.0, 0.02, 0.05, 0.10]
+    roll_deg: [-4.0, -2.0, -1.0, 0.0, 1.0, 2.0, 4.0]
+    yaw_deg: [-4.0, -2.0, -1.0, 0.0, 1.0, 2.0, 4.0]
+    focal_scale: [0.95, 0.98, 1.0, 1.02, 1.05]
+  wider_belief:                     # the pitch sweep again, with the robot ADMITTING that its
+    parameter: pitch_deg            # pitch is poorly known (default belief: 0.5 deg)
+    pitch_std_deg: 2.0

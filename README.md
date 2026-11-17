@@ -2,17 +2,18 @@
 
 Perception and localization research for the UTRA RoboSoccer humanoid.
 
-The repository has two parts, built in two phases:
+The repository was built in three phases:
 
 - **Phase 1, localization on oracle observations.** Lets the team develop and **measure**
   localization before any neural perception model exists and before the robot can walk.
 - **Phase 2, vision.** Generates labelled synthetic camera images from the same simulator,
   trains a small object detector (ball, goal posts, robots) and a small segmentation network
   (field, field lines), evaluates both, and runs them together on camera frames.
+- **Phase 3, vision localization.** Joins the two: geometric features are extracted from the
+  networks' predictions on rendered camera images, turned into the observations the particle
+  filter already consumes, and the result is benchmarked against the oracle on identical runs.
 
-The two are **not connected yet**: the localizer still runs on oracle observations, and the
-vision models stop at boxes and masks. Joining them is Phase 3
-([docs/phase3_interfaces.md](docs/phase3_interfaces.md)).
+All three are **simulation only**. No real camera image has been used anywhere.
 
 Phase 1 contains:
 
@@ -33,11 +34,25 @@ Phase 2 adds:
 - a YOLO11n detector and a small U-Net segmenter, with training, evaluation and export scripts;
 - an offline inference pipeline that runs both on an image and saves what it sees.
 
+Phase 3 adds:
+
+- image-to-ground projection from the robot's **estimated** camera pose, with validity checks
+  and uncertainty propagation;
+- geometric feature extraction from predicted masks and boxes: field-line points, goal posts
+  (position, or bearing only when the foot cannot be trusted), L / T / X junctions and the
+  centre circle;
+- a bridge to the Phase 1 `ObservationFrame`, and `VisionLocalizationPipeline.step(image, ...)`:
+  camera frame in, pose estimate out, with no access to the simulator;
+- a benchmark that runs the vision pipeline, the oracle, dead reckoning and a "perfect vision"
+  diagnostic side by side, with camera-calibration error, occlusion, damaged predictions,
+  appearance shift, field symmetry and kidnapping scenarios, and a calibration sensitivity
+  sweep.
+
 It is a standalone Python package (`robosoccer_perception`). It does not use ROS and does not
 depend on `robosoccer-rl` or `soccer-software` at run time.
 
-Not here: the ZED SDK, ROS 2 nodes or messages, SLAM, humanoid dynamics or locomotion, any use
-of the vision outputs for localization, and any validation on real camera footage.
+Not here: the ZED SDK, ROS 2 nodes or messages, SLAM, humanoid dynamics or locomotion, stereo
+depth, and any validation on real camera footage.
 
 ## Setup
 
@@ -61,6 +76,14 @@ PyTorch with CUDA libraries, Ultralytics and OpenCV: several GB of downloads.
 .venv/bin/python scripts/train_detector.py --download yolo11n.pt    # pretrained weights, 5 MB
 ```
 
+The interactive viewer needs one more extra, `viewer` (PySide6), and on Ubuntu the system
+package `libxcb-cursor0`; see [docs/viewer.md](docs/viewer.md).
+
+```bash
+.venv/bin/python -m pip install -e ".[all,vision,viewer]"
+sudo apt install libxcb-cursor0
+```
+
 Phase 1 does not need it, and its tests run without it (the vision tests are skipped).
 Ultralytics and the YOLO weights are AGPL-3.0; see
 [docs/object_detection.md](docs/object_detection.md#licensing).
@@ -80,14 +103,17 @@ by Git.
 ### Tests
 
 ```bash
-.venv/bin/python -m pytest                    # everything, about 1.5 minutes
+.venv/bin/python -m pytest                    # everything, about 3 minutes
 .venv/bin/python -m pytest -m "not slow"      # skips full localization runs and training smoke tests
-.venv/bin/python -m pytest -m "not vision"    # Phase 1 and the parts of Phase 2 that need no PyTorch
+.venv/bin/python -m pytest -m "not vision"    # everything that needs no PyTorch
 ```
 
 Tests that render images are skipped automatically when no OpenGL context is available, and
 tests that need PyTorch or Ultralytics when the `vision` extra is not installed. No test uses
-the network or needs downloaded weights.
+the network or needs downloaded weights. The Phase 3 tests that run the **trained** models
+(`tests/test_vision_localization_models.py`) are skipped until the checkpoints exist; all
+other Phase 3 tests use analytically painted views or a colour-threshold stand-in. The
+viewer's window tests run without a screen and are skipped when PySide6 is not installed.
 
 ### Render the field and a stereo pair
 
@@ -189,6 +215,68 @@ exhaust the RAM. If a run is killed, lower `workers` or `batch` in its configura
 
 Results and their limits are in [docs/vision_validation.md](docs/vision_validation.md).
 
+### Vision localization (Phase 3)
+
+Needs the trained detector and segmenter from the steps above.
+
+```bash
+# One scenario, one seed: what the camera saw, what was extracted, where the filter thinks it is
+.venv/bin/python scripts/run_vision_localization.py --list
+.venv/bin/python scripts/run_vision_localization.py v04_rectangle
+.venv/bin/python scripts/run_vision_localization.py v13a_kidnapped_same_side --seed 3 --frames 6
+.venv/bin/python scripts/run_vision_localization.py v04_rectangle --resolution 1280 720
+
+# The benchmark: 16 scenarios x 5 seeds x 4 arms, then the calibration sweep (about 1 h 50 min)
+.venv/bin/python scripts/benchmark_vision_localization.py
+.venv/bin/python scripts/benchmark_vision_localization.py --seeds 2 v01 v04 --no-sweep   # quick
+.venv/bin/python scripts/benchmark_vision_localization.py --sweep-only
+
+# Feature extraction alone, scored against the simulator on random views
+.venv/bin/python scripts/evaluate_features.py
+.venv/bin/python scripts/evaluate_features.py --source perfect_vision   # rendered labels instead
+.venv/bin/python scripts/evaluate_features.py --appearance strong       # strong domain randomization
+.venv/bin/python scripts/evaluate_features.py --pitch-error 2           # camera really 2 deg lower
+```
+
+Every benchmark run compares four **arms** on the same trajectory, odometry and initial guess:
+`vision` (the trained networks on the rendered image), `oracle` (Phase 1's observations),
+`odometry` (dead reckoning) and `perfect_vision` (rendered labels through the same geometry, a
+diagnostic).
+
+| Output | Where |
+|---|---|
+| Benchmark | `outputs/vision_localization/benchmark/` (`summary.md`, `results.json`, `summary.csv`, `runs.csv`, `features.csv`, `timeseries/`, `plots/`, `frames/`) |
+| Calibration sweep | `outputs/vision_localization/sweep/` (`sweep.json`, `sweep.csv`, `sensitivity.png`) |
+| Single runs | `outputs/vision_localization/runs/<scenario>_seed<k>/` (`arms.png`, `vision_trajectory.png`, `vision_particles.png`, `<arm>.csv`, `metrics.json`, `frames/`) |
+| Feature scores | `outputs/vision_localization/features/<name>.json` |
+
+Per kept frame, `frames/` holds the rendered image (`*_rgb.jpg`), the YOLO boxes and U-Net mask
+(`*_predictions.jpg`), the extracted line points, junctions and goal-post feet
+(`*_features.jpg`), the same on the ground in the robot frame (`*_ground.png`), and the
+particle cloud on the field (`*_particles.png`).
+
+Settings are in `configs/evaluation/vision_localization.yaml` (models, image size, seeds,
+sweep values) and `configs/perception/` (extraction and measurement-noise parameters).
+Results and their limits are in [docs/phase3_validation.md](docs/phase3_validation.md).
+
+### Watch the pipeline work (interactive viewer)
+
+One window with four synchronized panels: the camera image with the detector's boxes, the
+segmentation with the extracted features, the field from above with the particle cloud, the
+estimate and the true pose, and plots of error, confidence and latency. It runs any benchmark
+scenario live, pauses, steps, scrubs back through what it has shown, and replays recordings.
+
+```bash
+.venv/bin/python scripts/visualize_pipeline.py                      # v04_rectangle, paused
+.venv/bin/python scripts/visualize_pipeline.py v13a --autoplay      # any scenario, by prefix
+.venv/bin/python scripts/visualize_pipeline.py --replay outputs/viewer/recordings/<file>.npz
+.venv/bin/python scripts/visualize_pipeline.py v04 --headless --record --video   # no window
+```
+
+Keys: Space run / pause, Right / Left step, R reset, S screenshot, G ground truth. Recordings,
+videos and screenshots go to `outputs/viewer/`. Ground truth is displayed, never given to the
+estimator. Controls, panels and limits: [docs/viewer.md](docs/viewer.md).
+
 ### Use it from Python
 
 ```python
@@ -221,6 +309,27 @@ print(result.ball, result.goal_posts, result.robots, result.timing_ms)
 line_mask = result.segmentation.line_mask         # (H, W) bool
 ```
 
+Localization from camera frames (Phase 3):
+
+```python
+from robosoccer_perception.geometry.camera import StereoCameraConfig
+from robosoccer_perception.geometry.ground_projection import EstimatedCameraCalibration
+from robosoccer_perception.pipeline.vision_localization import VisionLocalizationPipeline
+
+pipeline = VisionLocalizationPipeline.from_checkpoints(
+    "outputs/detection/yolo11n/weights/best.pt", "outputs/segmentation/unet_small/best.pt")
+camera = StereoCameraConfig.load("zed_mini_sim").with_resolution(640, 360)   # the image size used
+calibration = EstimatedCameraCalibration.from_camera_config(camera)
+pipeline.init_gaussian([-2.0, -1.0, 0.3])           # or pipeline.init_uniform()
+
+out = pipeline.step(image_rgb, timestamp, OdometryDelta(dx=0.03, dy=0.0, dyaw=0.01),
+                    calibration, calibration.pose(pan=head_pan))    # the robot's own estimate
+print(out.pose, out.estimate.converged, out.estimate.symmetric_ambiguity, out.timing_ms)
+```
+
+`step` takes the image, the odometry and the robot's belief about its camera. It has no access
+to the simulator; see [docs/vision_localization.md](docs/vision_localization.md).
+
 ## Layout
 
 ```
@@ -234,8 +343,12 @@ configs/
   randomization/{none,mild,strong}.yaml        domain randomization presets     (Phase 2)
   detection/yolo11n{,_smoke}.yaml              detector training                (Phase 2)
   segmentation/unet_{small,smoke}.yaml         segmenter training               (Phase 2)
+  perception/feature_extraction.yaml           geometric extraction parameters  (Phase 3)
+  perception/measurement_noise.yaml            uncertainty model, calibration beliefs (Phase 3)
+  evaluation/vision_localization.yaml          benchmark settings and sweep     (Phase 3)
 src/robosoccer_perception/
   geometry/        field.py  landmarks.py  distance_map.py  transforms.py  camera.py
+                   ground_projection.py (pixel -> ground, camera estimates, covariance)
   simulation/      mujoco_scene.py  stereo_camera.py  trajectories.py  ground_truth.py  odometry.py
                    scene_objects.py (robots, ball looks, backdrop)
   observations/    types.py  oracle.py  noise.py
@@ -247,12 +360,22 @@ src/robosoccer_perception/
   segmentation/    model.py  data.py  losses.py  trainer.py  metrics.py  evaluation.py
                    segmenter.py  export.py
   inference/       types.py  pipeline.py  geometry.py  profiling.py
+  perception/      line_features.py  line_fitting.py  intersections.py  goal_features.py
+                   uncertainty.py  extractor.py  observation_builder.py  types.py  config.py
+  pipeline/        vision_localization.py (image + odometry -> pose; no simulator)
+  vision_benchmark/  camera_truth.py  sim_camera.py  scenarios.py  corruption.py  runner.py
+                   feature_metrics.py  feature_evaluation.py  benchmark.py  setup.py
   visualization/   field_plot.py  diagnostics.py  camera_overlay.py  style.py
-                   vision_overlay.py  vision_plots.py
+                   vision_overlay.py  vision_plots.py  vision_localization_plots.py
+  viewer/          session.py  frame.py  recording.py  render.py  worker.py  headless.py
+                   app.py  qt_env.py   (the interactive debugging viewer)
 scripts/           render_field.py  run_localization.py  benchmark.py
                    generate_dataset.py  inspect_dataset.py  train_detector.py  evaluate_detector.py
                    train_segmentation.py  evaluate_segmentation.py  run_vision.py  export_models.py
-tests/             one file per area; see docs/validation.md and docs/vision_validation.md
+                   run_vision_localization.py  benchmark_vision_localization.py
+                   evaluate_features.py  visualize_pipeline.py
+tests/             one file per area; see docs/validation.md, docs/vision_validation.md and
+                   docs/phase3_validation.md
 docs/              the documents below
 ```
 
@@ -270,15 +393,18 @@ docs/              the documents below
 | [docs/object_detection.md](docs/object_detection.md) | the YOLO baseline: model choice, licensing, training, evaluation, export |
 | [docs/segmentation.md](docs/segmentation.md) | the U-Net baseline: model, class imbalance, line metrics, training, evaluation |
 | [docs/vision_validation.md](docs/vision_validation.md) | Phase 2: tests, measured results, failure cases, what is not validated |
-| [docs/phase3_interfaces.md](docs/phase3_interfaces.md) | what vision hands over, and what is still missing before localization can use it |
+| [docs/phase3_interfaces.md](docs/phase3_interfaces.md) | what vision hands over and what localization expects (written before Phase 3; now annotated) |
+| [docs/geometric_perception.md](docs/geometric_perception.md) | Phase 3: ground projection, line points, goal posts, junctions, circle, the uncertainty model |
+| [docs/vision_localization.md](docs/vision_localization.md) | Phase 3: the camera-to-pose pipeline, the ground-truth boundary, benchmark arms and scenarios |
+| [docs/phase3_validation.md](docs/phase3_validation.md) | Phase 3: oracle versus vision versus odometry, calibration sensitivity, latency, failures, limits |
+| [docs/viewer.md](docs/viewer.md) | the interactive viewer: install, controls, what each panel shows, recordings, limits |
 
 ## Things to know before trusting a number
 
 - **The field is symmetric.** No localizer can tell a pose from its half-turn mirror image
   using the field alone. With no side information this filter reports both and says so.
-- **Perception is an oracle.** Its noise levels are engineering guesses, not measurements of a
-  real detector. Results show that the localizer works given such observations, not how well
-  the robot will localize.
+- **The Phase 1 oracle is a model, not a detector.** Its noise levels are engineering guesses.
+  Phase 3 keeps it as the reference arm that vision is compared against.
 - **The camera profile is approximate** and the mount is a placeholder for a robot that is not
   built yet.
 - **Several field values are assumptions** (goal height, post diameter, mark size, ball size).
@@ -286,5 +412,12 @@ docs/              the documents below
 - **Vision results are synthetic-on-synthetic.** The detector and the segmenter were trained
   and tested on images from the same simulator. Their scores say the pipeline works; they say
   nothing yet about a real ZED Mini on a real field. The robots in particular are placeholders.
-- **Vision and localization are not joined.** No localization number in this repository was
-  produced from an image.
+- **Localization from images works in the simulator, and only there.** With a correct camera
+  estimate the vision arm matches the oracle (2 to 4 cm, about 0.5 deg, 23 frames per second
+  at 640x360). Every image was rendered by this repository and the camera is an ideal pinhole
+  on a platform that does not walk.
+- **Camera calibration decides the accuracy.** A hidden 2 deg pitch error costs 34 cm and the
+  filter still reports itself converged; 5 cm of height costs 12 cm. The pipeline is told the
+  nominal camera mount and cannot discover the true one.
+- **A robot carried across the centre line re-localizes on the mirrored pose**, from images
+  and from oracle observations alike. Only outside information can prevent it.

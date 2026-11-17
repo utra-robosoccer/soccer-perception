@@ -35,6 +35,11 @@ vision = [
     "psutil>=5.9",
 ]
 
+# The interactive debugging viewer (scripts/visualize_pipeline.py). The window also needs the
+# `vision` extra for the models; `--headless` and replaying recordings need only OpenCV.
+# On Ubuntu, Qt 6 additionally needs:  sudo apt install libxcb-cursor0   (docs/viewer.md)
+viewer = ["PySide6-Essentials>=6.6,<7"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

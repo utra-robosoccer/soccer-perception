@@ -1,0 +1,39 @@
+# Measurement-noise model of image-derived observations. Mirrors
+# perception/config.py::MeasurementNoiseConfig. See docs/geometric_perception.md.
+#
+# These are the ROBOT'S BELIEFS about its own errors. They are engineering values for the
+# simulated camera, not measurements of a real ZED Mini on a real head.
+name: default
+
+calibration:                  # 1-sigma trust in the camera model; drives the "camera part"
+  pixel_std: 1.0              # px: how well a line-centre pixel is known
+  height_std: 0.02            # m
+  pitch_std_deg: 0.5          # a pitch error moves every ground point of the frame together
+  roll_std_deg: 0.5
+  yaw_std_deg: 0.5
+  focal_rel_std: 0.01         # relative focal-length error
+
+confidence_floor: 0.25        # model confidences below this are treated as this
+confidence_exponent: 0.5      # std is divided by confidence ** exponent
+
+# field-line points
+line_std_floor: 0.02          # m; half a line width, the centre of a 5 cm line is not sharper
+line_std_max: 0.45            # m; less certain points are not reported
+
+# goal posts
+post_pixel_std: [1.5, 3.0]    # px: column and row of the foot (the row is the weaker one)
+post_range_std_floor: 0.05    # m
+post_bearing_std_floor_deg: 0.75
+post_inflation_flagged: 2.0   # range std factor when a robot or the ball is at the foot
+bearing_only_range_std_fraction: 0.6    # bearing-only range std = max(min, fraction * rough range)
+bearing_only_range_std_min: 1.5         # m
+
+# junctions (they reuse the line pixels, so they must not count as fresh evidence)
+junction_pixel_std: 1.5
+junction_std_floor: 0.04      # m
+junction_inflation: 1.5
+
+# centre circle
+circle_pixel_std: 1.0
+circle_std_floor: 0.05        # m
+circle_inflation: 1.5
