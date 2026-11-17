@@ -1,8 +1,15 @@
 # Interfaces for Phase 3
 
+> **Status: Phase 3 is built.** This document was written at the end of Phase 2 to describe
+> the hand-over, and is kept because its description of the two interfaces is still accurate.
+> Every step in "The gap" below now exists; the last column of that table says where. For how
+> it works see [geometric_perception.md](geometric_perception.md) and
+> [vision_localization.md](vision_localization.md); for how well,
+> [phase3_validation.md](phase3_validation.md).
+
 Phase 2 ends at "image in, boxes and masks out". Phase 3 turns those into the relative
 observations the particle filter already consumes. This document describes the hand-over: what
-Phase 2 produces, what Phase 1 expects, and the steps in between that are **not built yet**.
+Phase 2 produces, what Phase 1 expects, and the steps in between.
 
 ```
                     Phase 2 (done)                         Phase 3 (to do)                 Phase 1 (done)
@@ -69,20 +76,20 @@ to 40 line points per update.
 
 ## The gap, step by step
 
-| Step | Input | Output | Status |
+| Step | Input | Output | Built in Phase 3 as |
 |---|---|---|---|
-| 1. Pick line pixels | `line_mask` | at most N pixels `(u, v)`, thinned and spread | utility exists: `inference.geometry.sample_line_pixels` |
-| 2. Project to the ground | pixels, intrinsics, `T_base_camera` | points in the base frame | utility exists: `inference.geometry.pixels_to_ground` |
-| 3. Line-point uncertainty | range, camera height, pitch uncertainty | `std` per point | **to do** |
-| 4. Goal posts | `goal_post` boxes | `bottom_center` to ground point, `GOAL_POST` landmark | **to do** |
-| 5. Junctions L / T / X | line mask or projected line points | landmark observations | **to do** |
-| 6. Centre circle, penalty marks | line mask | landmark observations | **to do** |
-| 7. Assemble `ObservationFrame` | all of the above | `ObservationFrame` | **to do** |
-| 8. Close the loop | frames, odometry | pose estimates versus ground truth | **to do** |
+| 1. Pick line pixels | `line_mask` | a bounded, spread-out set of centreline pixels | `perception/line_features.py::centreline_pixels` (distance-transform ridge; replaces the slower `inference.geometry.sample_line_pixels`) |
+| 2. Project to the ground | pixels, intrinsics, `T_base_camera` | points in the base frame, with validity flags | `geometry/ground_projection.py::project_to_ground` |
+| 3. Line-point uncertainty | range, camera height, pitch uncertainty | `std` per point, across the line | `projection_covariance`, `perception/uncertainty.py::line_point_std` |
+| 4. Goal posts | `goal_post` boxes | foot on the ground or bearing only, `GOAL_POST` landmark | `perception/goal_features.py` |
+| 5. Junctions L / T / X | projected line points | landmark observations | `perception/line_fitting.py`, `perception/intersections.py` |
+| 6. Centre circle | projected line points | `CENTER_MARK` | `perception/line_fitting.py::fit_circle`. Penalty marks: **not built** |
+| 7. Assemble `ObservationFrame` | all of the above | `ObservationFrame` | `perception/observation_builder.py` |
+| 8. Close the loop | frames, odometry | pose estimates versus ground truth | `pipeline/vision_localization.py`, `vision_benchmark/` |
 
-Steps 1 and 2 exist as inspection tools only. They are enough to see that the masks are
-geometrically usable (`scripts/run_vision.py --ground` draws the projected line pixels over the
-field), and that is all they are used for.
+The Phase 2 utilities for steps 1 and 2 (`inference/geometry.py`) remain as inspection tools:
+`scripts/run_vision.py --ground` draws the projected line pixels over the field with the TRUE
+camera pose. The Phase 3 pipeline does not use them; it never has the true camera pose.
 
 ```python
 from robosoccer_perception.inference import geometry
@@ -93,6 +100,11 @@ points, valid = geometry.pixels_to_ground(pixels, camera_model.intrinsics, T_bas
 ```
 
 ### Notes for whoever builds Phase 3
+
+(Written before Phase 3. What became of each note: pitch sensitivity is measured in the
+calibration sweep; uncertainty is derived as suggested; goal posts fall back to bearing only,
+and their foot turned out NOT to be the box's bottom centre because posts lean in the image;
+the ball and stereo are still unused; symmetry is preserved and reported.)
 
 **The camera pose relative to the ground must come from the robot**, not from ground truth:
 head joint angles and, once the robot walks, the IMU's roll and pitch. Ground projection is
@@ -143,6 +155,8 @@ must not reach the models or the localizer.
 filter takes 2 to 6 ms per update. Whatever Phase 3 adds sits between the two.
 
 ## What Phase 2 deliberately did not do
+
+(All but the last two items are now done by Phase 3, outside the Phase 2 packages.)
 
 - No conversion of detections or masks into `LandmarkObservation` / `LinePointsObservation`.
 - No junction, circle or penalty-mark extraction.
