@@ -165,6 +165,11 @@ class MeasurementNoiseConfig:
     circle_pixel_std: float = 1.0           # px
     circle_std_floor: float = 0.05          # metres
     circle_inflation: float = 1.5
+    # camera error shared by every feature of a frame (Phase 4; off = the Phase 3 behaviour)
+    shared_camera_error: bool = False       # price the camera part as COMMON to the frame
+    shared_error_point_weight: float = 0.3  # the localizer's exponent per line point ...
+    shared_error_max_points: int = 40       # ... and the number of points it uses per update
+    shared_error_max_inflation: float = 12.0    # cap of the variance factor
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "MeasurementNoiseConfig":

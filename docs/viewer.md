@@ -2,11 +2,17 @@
 
 An interactive window for watching the vision-localization pipeline work, one frame at a time:
 what the camera saw, what the networks predicted, what was extracted from it, where the
-particle filter thinks the robot is, and how wrong it is. It runs the Phase 3 benchmark
-scenarios live in the simulator, or replays a recorded run.
+particle filter thinks the robot is, and how wrong it is. It runs the benchmark scenarios
+live in the simulator, or replays a recorded run.
+
+Since Phase 4 it also shows **UTRA's humanoid_prototype_1** walking, swaying and being pushed
+around the field, with a third-person picture of the robot in the camera panel, a choice of
+virtual camera mounts, and the robot's estimated camera orientation next to the true one
+([Phase 4 scenarios](#phase-4-the-humanoid-and-its-moving-camera)).
 
 It is a debugging tool for the simulator. It does not talk to ROS, a real camera or the
-physical robot model.
+physical robot. The humanoid in it is a posed, visual-only model: it is not simulated
+dynamically and its stepping is an animation.
 
 ```
 +----------------------------+----------------------------+-----------+
@@ -21,6 +27,7 @@ physical robot model.
 | ambiguity and uncertainty  | simulation FPS             |           |
 +----------------------------+----------------------------+-----------+
   scenario  seed  Run  < Step  Step >  Reset  speed  [ground truth]     slider
+  robot  camera mount  body motion  camera pose                 (Phase 4 scenarios)
 ```
 
 ## Install
@@ -57,10 +64,15 @@ itself, in `viewer/qt_env.py`.)
 From the repository root. With a ROS workspace sourced, prefix with `env -u PYTHONPATH`.
 
 ```bash
-.venv/bin/python scripts/visualize_pipeline.py                         # v04_rectangle, paused
-.venv/bin/python scripts/visualize_pipeline.py v13a --seed 2 --autoplay
+.venv/bin/python scripts/visualize_pipeline.py                         # h05_walk_rectangle: the
+                                                                       # humanoid walking, paused
+.venv/bin/python scripts/visualize_pipeline.py h02 --fusion fixed      # sway, Phase 3 camera model
+.venv/bin/python scripts/visualize_pipeline.py h10 --fusion imu_selfcal --autoplay
+.venv/bin/python scripts/visualize_pipeline.py h05 --mount head_high --motion walking_rough
+.venv/bin/python scripts/visualize_pipeline.py h05 --robot placeholder --mount legacy_rig
+.venv/bin/python scripts/visualize_pipeline.py v13a --seed 2 --autoplay     # a Phase 3 scenario
 .venv/bin/python scripts/visualize_pipeline.py v12a --speed 0.5
-.venv/bin/python scripts/visualize_pipeline.py --list                  # the 16 scenarios
+.venv/bin/python scripts/visualize_pipeline.py --list                  # all 34 scenarios
 .venv/bin/python scripts/visualize_pipeline.py --replay outputs/viewer/recordings/<file>.npz
 
 # no window: run a scenario to its end, save a recording, a video and two pictures
@@ -79,6 +91,10 @@ takes one to two seconds (CUDA warm-up); after that a frame takes about 50 ms.
 | Control | Key | What it does |
 |---|---|---|
 | Scenario, Seed | | load a benchmark scenario; the run is the benchmark's run for that seed |
+| Robot | | Phase 4: `humanoid_prototype_1` or the `placeholder` rig of Phases 1 to 3 |
+| Camera mount | | Phase 4: a virtual mount preset (`head_low` ... `head_tall`, `legacy_rig`); all experimental |
+| Body motion | | Phase 4: `standing`, `sway_pitch`, `sway_roll`, `walking`, `walking_rough`, `disturbed`, ... |
+| Camera pose | | Phase 4: how the robot estimates its camera pose: fixed (Phase 3), IMU, IMU + uncertainty, IMU + mount self-calibration, or the naive newest-IMU-sample pairing |
 | Run / Pause | Space | start or stop |
 | Step > | Right | one frame forward: from the history if there is one, else simulate one |
 | < Step | Left | one frame back (from the history; the filter is not run backwards) |
@@ -143,6 +159,58 @@ four plots over the whole run with a cursor at the current frame:
 
 Plots 1 and 2 are where a calibration error shows: in `v09_camera_pitch_error` the error
 curve sits far above the reported sigma. Dashed vertical lines mark kidnappings.
+
+## Phase 4: the humanoid and its moving camera
+
+Scenarios whose id starts with `h` (`--list`) put a moving body under the camera: standing,
+forward / backward and lateral sway, walking, turning, abrupt disturbances, a mount that is
+not where the robot believes, different head heights, lost IMU samples and timing errors. They
+are the scenarios of `scripts/benchmark_humanoid_fusion.py`, and a viewer session reproduces
+the benchmark arm it shows bit for bit.
+
+The second control bar chooses the body, the mount, the motion and the camera-pose estimator.
+"As the scenario" keeps the scenario's own; changing any of them restarts the run. For a
+Phase 3 scenario (`v...`) the bar is greyed out.
+
+What is added to the four panels:
+
+**Camera.** The image comes from the virtual ZED Mini on the selected mount. In the top-right
+corner is a third-person picture of the robot (toggle: "Robot view"). It shows the real
+humanoid model stepping across the field and, drawn on it, the body frame's axes (red, green,
+blue), the mount offset (yellow), the virtual head mast (grey), the camera housing and the
+viewing direction (magenta). The markers and the mast are aids, not parts; the robot's own
+camera never sees them.
+
+**Diagnostics.** Four more lines of text and one more plot:
+
+| Line | Content |
+|---|---|
+| camera (estimated) | the pitch, roll and height the robot projects with. No ground truth is involved |
+| camera (true) | the same from the simulator, and the orientation error (shown with ground truth only) |
+| body tilt | the estimated roll and pitch with their uncertainty, how they were obtained (`imu`, `nominal`, `nominal_fallback`), the synchronisation method and the distance in time to the nearest IMU sample; the true tilt beside it |
+| mount | the mount transform in use, flagged EXPERIMENTAL, and with self-calibration the monitor's status, estimated bias and current correction |
+
+The extra plot is the camera pitch below the horizon: estimated (orange) against true (blue).
+With "Fixed camera" the orange line is flat while the blue one moves; with the IMU it follows.
+In `h10_mount_pitch_error` the two stay 2 degrees apart until the self-calibration closes the
+gap.
+
+Things worth watching:
+
+| Run | What it shows |
+|---|---|
+| `h02 --fusion fixed`, then `--fusion imu` | a +-4 degree sway destroys localization with a fixed camera model and is harmless with the IMU |
+| `h05 --fusion imu` against `imu_uncertainty` | the same pose error, an honest (wider) reported uncertainty |
+| `h10 --fusion imu` against `imu_selfcal` | a mount error the IMU cannot see, and the monitor finding it in the field lines |
+| `h05 --robot placeholder --mount legacy_rig` | the Phase 1 to 3 rig under the same motion |
+| `h05 --mount head_low` / `head_tall` | what the head's height does to the view |
+
+The recordings hold all of this (including the robot picture), so a Phase 4 run replays
+without the simulator. Recordings made before Phase 4 still open.
+
+Measured on the RTX 2050 laptop at 640x360 with the humanoid: the third-person picture adds
+about 6 ms of rendering per frame and the IMU filter under 2 ms; the window still runs at real
+time (10 frames per second) with headroom.
 
 ## Recordings, videos, screenshots
 
@@ -214,9 +282,10 @@ headroom), about 17 frames per second at "max" (1.7x real time; a frame costs th
 
 | File | Tests | What it establishes |
 |---|---|---|
-| `test_viewer.py` | 40 | frame packing and recordings round-trip; every overlay toggle changes its own panel and no other; hiding ground truth leaves no trace; the map states ambiguity; video export; **a session reproduces the benchmark's vision arm bit for bit, and each frame's image is the one its estimate was computed from**; **the estimator is given sensor data only**; reset repeats the run exactly; the worker steps, runs, pauses, resets, paces itself to the speed, waits for a slow consumer and reports failures |
+| `test_viewer.py` | 41 | frame packing and recordings round-trip; every overlay toggle changes its own panel and no other; hiding ground truth leaves no trace; the map states ambiguity; video export; **a session reproduces the benchmark's vision arm bit for bit, and each frame's image is the one its estimate was computed from**; **the estimator is given sensor data only**; reset repeats the run exactly; the worker steps, runs, pauses, resets, paces itself to the speed, waits for a slow consumer and reports failures |
 | `test_viewer_gui.py` | 17 | the real window without a screen: opens paused; Run, Pause, Step, back-step and Reset; **the four panels are the frame under the slider**; replay from the history, then live again; overlay and ground-truth toggles; screenshot, recording, replay of a recording, video; four benchmark scenarios; changing the seed; **the window keeps running while inference takes 150 ms**; the Qt start-up checks |
 | `test_viewer_models.py` | 4 | with the trained YOLO11n and U-Net: three scenarios through the viewer match the benchmark, and the headless demonstration runs end to end |
+| `test_viewer_humanoid.py` | 12 | Phase 4: frames carry the robot's belief (`FusionView`) apart from the truth; old recordings still open; **a humanoid session reproduces the benchmark arm bit for bit**; hiding ground truth does not change an estimate; body, mount, motion and estimator controls; a Phase 4 run records, exports and replays; the window's Phase 4 controls |
 
 The window tests use Qt's `offscreen` platform and are skipped when PySide6 is not installed.
 In addition the window was driven on the laptop's display with the trained models: three
@@ -225,11 +294,15 @@ the recording and video export.
 
 ## Limits
 
-- **Simulation only.** No ROS, no real camera, no physical robot model.
+- **Simulation only.** No ROS, no real camera, no physical robot. The humanoid is a posed
+  visual model: it does not balance, and its stepping is an animation
+  ([humanoid_integration.md](humanoid_integration.md)).
+- **The oracle arm is not offered.** The viewer shows estimators a robot could run; the
+  benchmark's orientation oracle uses ground truth and stays in the benchmark.
 - **Benchmark scenarios only.** The robot follows the scenario's trajectory; it cannot be
   driven by hand, and nothing in the scene can be moved from the window.
-- **One localizer.** Only the vision arm is shown; the oracle and dead-reckoning arms of the
-  benchmark are not run alongside.
+- **One localizer.** Only one arm is shown at a time; to compare two camera-pose estimators,
+  run the scenario twice (the runs are deterministic) or read the benchmark.
 - **Live speed is bounded by inference.** About 1.7x real time on this laptop at 640x360, so
   "2x" and "4x" are reached only when replaying. At 1280x720 a step takes about 60 ms.
 - **Stepping back is replay.** The history is shown again; the filter's state is not

@@ -1,0 +1,18 @@
+# SYNTHETIC body motion. Plausible for a 70 cm humanoid; NOT fitted to measurements of
+# humanoid_prototype_1 (see simulation/body_motion.py). Angles in degrees, lengths in metres
+# (one-sided amplitudes), frequencies in hertz.
+name: disturbed
+description: "Standing with abrupt disturbances: a tilt of 4 to 8 deg in 0.12 s every few seconds."
+sway_pitch_deg: 0.35
+sway_pitch_hz: 0.30
+sway_roll_deg: 0.25
+sway_roll_hz: 0.23
+noise_roll_deg: 0.12
+noise_pitch_deg: 0.15
+noise_height_m: 0.0005
+noise_bandwidth_hz: 1.5
+disturbance_rate_hz: 0.30
+disturbance_deg: [4.0, 8.0]
+disturbance_rise_s: 0.12
+disturbance_recover_s: 0.70
+disturbance_start_s: 2.0

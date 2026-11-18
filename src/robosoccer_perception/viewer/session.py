@@ -224,84 +224,106 @@ class LiveSession:
                  output: VisionLocalizationOutput, render_ms: float, true_pose: np.ndarray,
                  kidnapped: bool) -> ViewerFrame:
         """THE VIEWER. Reads the pipeline's output; nothing here flows back into it."""
-        features, estimate, update = output.features, output.estimate, output.update
-        calibration = self._calibration
-
-        def to_pixels(points) -> np.ndarray:
-            points = np.asarray(points, dtype=float).reshape(-1, 2)
-            if not len(points):
-                return np.zeros((0, 2))
-            pixels, _ = ground_to_pixels(points, calibration, camera)
-            pixels = np.array(pixels, dtype=float)
-            pixels[~np.isfinite(pixels).all(axis=1) | (np.abs(pixels) > PIXEL_LIMIT).any(axis=1)] \
-                = np.nan
-            return pixels
-
-        segments = np.array([[s.start, s.end] for s in features.segments]).reshape(-1, 2, 2)
-        junctions = np.array([j.position for j in features.intersections]).reshape(-1, 2)
-        centers = np.array([c.center for c in features.circles]).reshape(-1, 2)
-        radius = float(features.circles[0].radius) if features.circles \
-            else float(self.field.center_circle_radius)
-        angles = np.linspace(0.0, 2.0 * math.pi, CIRCLE_OUTLINE_POINTS)
-        ring = radius * np.column_stack([np.cos(angles), np.sin(angles)])
-        outlines = np.array([to_pixels(center + ring) for center in centers]).reshape(
-            -1, CIRCLE_OUTLINE_POINTS, 2)
-        posts = np.array([p.position for p in features.goal_posts]).reshape(-1, 2)
-        observed = output.observations
-
-        localizer = self._pipeline.localizer
-        count = localizer.num_particles
-        chosen = np.unique(np.linspace(0, count - 1, min(count, self.max_particles)).astype(int))
-        weights = np.asarray(localizer.weights, dtype=float)[chosen]
-        weights = weights / max(float(weights.sum()), 1e-300)
-
-        now = time.perf_counter()
-        if self._last_call is not None and 0.0 < now - self._last_call < 2.0:
-            instant = 1.0 / (now - self._last_call)
-            self._fps = instant if self._fps == 0.0 else 0.8 * self._fps + 0.2 * instant
-        self._last_call = now
-
+        self._fps, self._last_call = update_rate(self._fps, self._last_call)
         truth = None
         if self.with_truth:
-            position_error, yaw_error = metrics_module.pose_errors(estimate.pose, true_pose)
-            mirror_position, mirror_yaw = metrics_module.mirror_errors(estimate.pose, true_pose)
-            truth = TruthView(true_pose, float(position_error), float(yaw_error),
-                              float(mirror_position), float(mirror_yaw), bool(kidnapped))
+            truth = truth_view(output.estimate.pose, true_pose, kidnapped)
+        return make_frame(step, sensors.timestamp, sensors.image, output, self._calibration,
+                          camera, self._pipeline.localizer, self.field, self.max_particles,
+                          render_ms, self._fps, step > 0 and sensors.odometry is None, truth)
 
-        return ViewerFrame(
-            step=step, timestamp=float(sensors.timestamp),
-            image=sensors.image, mask=np.asarray(output.vision.segmentation.mask, np.uint8),
-            detections=tuple(output.vision.detections),
-            line_pixels=np.asarray(features.line_points.pixels, float).reshape(-1, 2),
-            line_points=np.asarray(features.line_points.points, float).reshape(-1, 2),
-            line_std=np.asarray(features.line_points.std, float).reshape(-1),
-            segment_pixels=to_pixels(segments.reshape(-1, 2)).reshape(-1, 2, 2),
-            segments=segments,
-            junction_pixels=to_pixels(junctions), junctions=junctions,
-            junction_codes=np.array([landmark_code(j.type) for j in features.intersections],
-                                    dtype=int),
-            circle_centers=centers, circle_center_pixels=to_pixels(centers),
-            circle_valid=np.array([c.valid for c in features.circles], dtype=bool),
-            circle_radius=radius, circle_outlines=outlines,
-            post_pixels=np.array([p.pixel for p in features.goal_posts]).reshape(-1, 2),
-            posts=posts,
-            post_range_valid=np.array([p.range_valid for p in features.goal_posts], dtype=bool),
-            landmarks=np.array([lm.position for lm in observed.landmarks]).reshape(-1, 2),
-            landmark_codes=np.array([landmark_code(lm.type) for lm in observed.landmarks],
-                                    dtype=int),
-            observed_line_points=len(observed.line_points),
-            pose=np.asarray(estimate.pose, float).copy(),
-            covariance=np.asarray(estimate.covariance, float).copy(),
-            position_std=float(estimate.position_std),
-            yaw_std_deg=math.degrees(float(estimate.yaw_std)),
-            confidence=float(estimate.confidence), mode_weight=float(estimate.mode_weight),
-            converged=bool(estimate.converged), ambiguous=bool(estimate.symmetric_ambiguity),
-            modes=np.array([[*m.pose, m.weight] for m in estimate.modes]).reshape(-1, 4),
-            ess_fraction=float(update.effective_sample_size) / count,
-            resampled=bool(update.resampled), injected=int(update.injected),
-            particles=np.asarray(localizer.particles, np.float32)[chosen].copy(),
-            particle_weights=weights.astype(np.float32), num_particles=int(count),
-            odometry_lost=step > 0 and sensors.odometry is None,
-            timing_ms={**{k: float(v) for k, v in output.timing_ms.items()},
-                       "render": float(render_ms)},
-            sim_fps=float(self._fps), truth=truth)
+
+# --------------------------------------------------------------------------------------------
+# Shared by every kind of session: turning one step's results into a `ViewerFrame`
+# --------------------------------------------------------------------------------------------
+def update_rate(fps: float, last_call: float | None) -> tuple[float, float]:
+    """Smoothed steps per wall-clock second, and the time of this call."""
+    now = time.perf_counter()
+    if last_call is not None and 0.0 < now - last_call < 2.0:
+        instant = 1.0 / (now - last_call)
+        fps = instant if fps == 0.0 else 0.8 * fps + 0.2 * instant
+    return fps, now
+
+
+def truth_view(estimate_pose, true_pose, kidnapped: bool = False, **extra) -> TruthView:
+    """DISPLAY ONLY: the true pose and the errors of the estimate against it."""
+    position_error, yaw_error = metrics_module.pose_errors(estimate_pose, true_pose)
+    mirror_position, mirror_yaw = metrics_module.mirror_errors(estimate_pose, true_pose)
+    return TruthView(np.asarray(true_pose, float).copy(), float(position_error),
+                     float(yaw_error), float(mirror_position), float(mirror_yaw),
+                     bool(kidnapped), **extra)
+
+
+def make_frame(step: int, timestamp: float, image: np.ndarray,
+               output: VisionLocalizationOutput, calibration: EstimatedCameraCalibration,
+               camera: EstimatedCameraPose, localizer, field: FieldGeometry, max_particles: int,
+               render_ms: float, fps: float, odometry_lost: bool, truth: TruthView | None,
+               fusion=None, robot_view: np.ndarray | None = None) -> ViewerFrame:
+    """One `ViewerFrame` from a pipeline output. ``camera`` is the camera pose the features
+    were projected with (the robot's estimate); it is used to draw them back into the image."""
+    features, estimate, update = output.features, output.estimate, output.update
+
+    def to_pixels(points) -> np.ndarray:
+        points = np.asarray(points, dtype=float).reshape(-1, 2)
+        if not len(points):
+            return np.zeros((0, 2))
+        pixels, _ = ground_to_pixels(points, calibration, camera)
+        pixels = np.array(pixels, dtype=float)
+        pixels[~np.isfinite(pixels).all(axis=1) | (np.abs(pixels) > PIXEL_LIMIT).any(axis=1)] \
+            = np.nan
+        return pixels
+
+    segments = np.array([[s.start, s.end] for s in features.segments]).reshape(-1, 2, 2)
+    junctions = np.array([j.position for j in features.intersections]).reshape(-1, 2)
+    centers = np.array([c.center for c in features.circles]).reshape(-1, 2)
+    radius = float(features.circles[0].radius) if features.circles \
+        else float(field.center_circle_radius)
+    angles = np.linspace(0.0, 2.0 * math.pi, CIRCLE_OUTLINE_POINTS)
+    ring = radius * np.column_stack([np.cos(angles), np.sin(angles)])
+    outlines = np.array([to_pixels(center + ring) for center in centers]).reshape(
+        -1, CIRCLE_OUTLINE_POINTS, 2)
+    posts = np.array([p.position for p in features.goal_posts]).reshape(-1, 2)
+    observed = output.observations
+
+    count = localizer.num_particles
+    chosen = np.unique(np.linspace(0, count - 1, min(count, max_particles)).astype(int))
+    weights = np.asarray(localizer.weights, dtype=float)[chosen]
+    weights = weights / max(float(weights.sum()), 1e-300)
+
+    return ViewerFrame(
+        step=step, timestamp=float(timestamp),
+        image=image, mask=np.asarray(output.vision.segmentation.mask, np.uint8),
+        detections=tuple(output.vision.detections),
+        line_pixels=np.asarray(features.line_points.pixels, float).reshape(-1, 2),
+        line_points=np.asarray(features.line_points.points, float).reshape(-1, 2),
+        line_std=np.asarray(features.line_points.std, float).reshape(-1),
+        segment_pixels=to_pixels(segments.reshape(-1, 2)).reshape(-1, 2, 2),
+        segments=segments,
+        junction_pixels=to_pixels(junctions), junctions=junctions,
+        junction_codes=np.array([landmark_code(j.type) for j in features.intersections],
+                                dtype=int),
+        circle_centers=centers, circle_center_pixels=to_pixels(centers),
+        circle_valid=np.array([c.valid for c in features.circles], dtype=bool),
+        circle_radius=radius, circle_outlines=outlines,
+        post_pixels=np.array([p.pixel for p in features.goal_posts]).reshape(-1, 2),
+        posts=posts,
+        post_range_valid=np.array([p.range_valid for p in features.goal_posts], dtype=bool),
+        landmarks=np.array([lm.position for lm in observed.landmarks]).reshape(-1, 2),
+        landmark_codes=np.array([landmark_code(lm.type) for lm in observed.landmarks],
+                                dtype=int),
+        observed_line_points=len(observed.line_points),
+        pose=np.asarray(estimate.pose, float).copy(),
+        covariance=np.asarray(estimate.covariance, float).copy(),
+        position_std=float(estimate.position_std),
+        yaw_std_deg=math.degrees(float(estimate.yaw_std)),
+        confidence=float(estimate.confidence), mode_weight=float(estimate.mode_weight),
+        converged=bool(estimate.converged), ambiguous=bool(estimate.symmetric_ambiguity),
+        modes=np.array([[*m.pose, m.weight] for m in estimate.modes]).reshape(-1, 4),
+        ess_fraction=float(update.effective_sample_size) / count,
+        resampled=bool(update.resampled), injected=int(update.injected),
+        particles=np.asarray(localizer.particles, np.float32)[chosen].copy(),
+        particle_weights=weights.astype(np.float32), num_particles=int(count),
+        odometry_lost=bool(odometry_lost),
+        timing_ms={**{k: float(v) for k, v in output.timing_ms.items()},
+                   "render": float(render_ms)},
+        sim_fps=float(fps), truth=truth, fusion=fusion, robot_view=robot_view)

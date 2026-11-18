@@ -30,7 +30,8 @@ from robosoccer_perception.perception.config import (
 from robosoccer_perception.perception.goal_features import extract_goal_posts
 from robosoccer_perception.perception.types import (
     CircleFeature, FeatureSet, IntersectionFeature, LinePointFeatures, LineSegmentFeature)
-from robosoccer_perception.perception.uncertainty import line_point_std, point_uncertainty
+from robosoccer_perception.perception.uncertainty import (
+    line_point_std, point_uncertainty, shared_error_inflation)
 
 _REJECTION_NAMES = {
     ProjectionStatus.ABOVE_HORIZON: "above_horizon", ProjectionStatus.NEAR_HORIZON: "near_horizon",
@@ -66,15 +67,16 @@ class GeometricFeatureExtractor:
         segments: tuple[LineSegmentFeature, ...] = ()
         junctions: tuple[IntersectionFeature, ...] = ()
         circles: tuple[CircleFeature, ...] = ()
+        inflation = 1.0             # variance factor of the camera part (shared-error model)
         if segmentation is not None:
-            line_points, segments, junctions, circles = self._line_features(
+            line_points, segments, junctions, circles, inflation = self._line_features(
                 segmentation, calibration, pose, diagnostics)
         posts, rejected_posts = (), {}
         if self.cfg.goal_posts.enabled and vision.detections:
             found, rejected_posts = extract_goal_posts(
                 vision.detections, None if segmentation is None else segmentation.mask,
                 (vision.width, vision.height), calibration, pose, self.post_diameter,
-                self.post_height, self.cfg.goal_posts, self.noise)
+                self.post_height, self.cfg.goal_posts, self.noise, inflation)
             posts = tuple(found)
         diagnostics["goal_posts"] = {
             "detections": sum(d.class_id == schema.GOAL_POST for d in vision.detections),
@@ -98,7 +100,7 @@ class GeometricFeatureExtractor:
             "centreline_pixels": centre.num_centreline_pixels, "candidates": len(centre),
             "valid": int(valid.sum()), "rejected": int((~valid).sum()),
             "rejected_by_reason": {k: v for k, v in rejected.items() if v}}
-        empty = (LinePointFeatures.empty(), (), (), ())
+        empty = (LinePointFeatures.empty(), (), (), (), 1.0)
         if not valid.any():
             diagnostics["lines"].update(dense=0, reported=0)
             return empty
@@ -112,6 +114,11 @@ class GeometricFeatureExtractor:
         pixel_rms = covariance.std_rms("pixel")
         distance = np.hypot(points[:, 0], points[:, 1])
         normals = np.full((len(points), 2), np.nan)
+        # The points the localizer will get: chosen now, because how many of them share the
+        # frame's camera error decides how that error is priced (1.0 = Phase 3 behaviour).
+        sparse_keep = line_features.thin_on_ground(points, confidence, cfg.lines.ground_spacing,
+                                                   cfg.lines.max_points)
+        inflation = shared_error_inflation(len(sparse_keep), noise)
 
         # ---- centre circle (first, so that its arcs are not mistaken for short lines)
         circles: list[CircleFeature] = []
@@ -124,7 +131,8 @@ class GeometricFeatureExtractor:
                                              cfg.circle, rng)
             if fitted is not None and len(fitted.indices) >= 3:
                 members = pool[fitted.indices]
-                circles.append(self._circle_feature(fitted, confidence[members], calibration, pose))
+                circles.append(self._circle_feature(fitted, confidence[members], calibration, pose,
+                                                    inflation))
                 if fitted.accepted:
                     on_circle[members] = True
                     radial = points[members] - fitted.center
@@ -159,24 +167,27 @@ class GeometricFeatureExtractor:
                         candidates += intersections.circle_line_junctions(
                             circle.center, circle.radius, fitted_segments, cfg.intersections)
                 for candidate in candidates:
-                    junction_features.append(self._junction_feature(candidate, calibration, pose))
+                    junction_features.append(self._junction_feature(candidate, calibration, pose,
+                                                                    inflation))
 
         # ---- line points for the localizer: sparser, with across-line uncertainty
-        keep = line_features.thin_on_ground(points, confidence, cfg.lines.ground_spacing,
-                                            cfg.lines.max_points)
+        keep = sparse_keep
         sparse = type(covariance)(covariance.pixel[keep], covariance.camera[keep])
-        std, pixel_std, camera_std = line_point_std(sparse, normals[keep], confidence[keep], noise)
+        std, pixel_std, camera_std = line_point_std(sparse, normals[keep], confidence[keep], noise,
+                                                    inflation)
         certain = std <= noise.line_std_max
         diagnostics["lines"].update(dense=len(points), reported=int(certain.sum()),
                                     dropped_uncertain=int((~certain).sum()),
                                     segments=len(fitted_segments))
+        if inflation != 1.0:
+            diagnostics["lines"]["shared_error_inflation"] = inflation
         keep = keep[certain]
         line_points = LinePointFeatures(pixels[keep], points[keep], std[certain],
                                         confidence[keep], pixel_std[certain], camera_std[certain],
                                         normals[keep])
         segments = tuple(LineSegmentFeature(s.start, s.end, len(s.indices), s.rms)
                          for s in fitted_segments)
-        return line_points, segments, tuple(junction_features), tuple(circles)
+        return line_points, segments, tuple(junction_features), tuple(circles), inflation
 
     def _turf_probe(self, segmentation, calibration, pose) -> intersections.Probe:
         """What the predicted mask shows at ground points, seen through the robot's own
@@ -198,7 +209,8 @@ class GeometricFeatureExtractor:
             return result
         return probe
 
-    def _junction_feature(self, candidate, calibration, pose) -> IntersectionFeature:
+    def _junction_feature(self, candidate, calibration, pose, camera_inflation: float = 1.0
+                          ) -> IntersectionFeature:
         noise = self.noise
         confidence = float(np.clip(candidate.arm_length / (2.0 * self.cfg.intersections.min_arm),
                                    0.3, 1.0))
@@ -206,11 +218,13 @@ class GeometricFeatureExtractor:
             candidate.position, calibration, pose, noise, pixel_std=noise.junction_pixel_std,
             range_std_floor=noise.junction_std_floor,
             bearing_std_floor=noise.junction_std_floor / max(np.linalg.norm(candidate.position), 0.5),
-            confidence=confidence, inflation=noise.junction_inflation)
+            confidence=confidence, inflation=noise.junction_inflation,
+            camera_inflation=camera_inflation)
         return IntersectionFeature(candidate.type, candidate.position, uncertainty, confidence,
                                    candidate.orientation, candidate.flags)
 
-    def _circle_feature(self, fitted, confidence, calibration, pose) -> CircleFeature:
+    def _circle_feature(self, fitted, confidence, calibration, pose,
+                        camera_inflation: float = 1.0) -> CircleFeature:
         noise = self.noise
         # A circle seen as a short arc constrains its centre poorly: scale the fit error up.
         arc_factor = 360.0 / max(fitted.arc_coverage_deg, 30.0)
@@ -221,7 +235,8 @@ class GeometricFeatureExtractor:
             range_std_floor=noise.circle_std_floor,
             bearing_std_floor=noise.circle_std_floor / max(np.linalg.norm(fitted.center), 0.5),
             confidence=max(score, noise.confidence_floor) if fitted.accepted else 1.0,
-            inflation=noise.circle_inflation, extra_variance=fit_variance)
+            inflation=noise.circle_inflation, extra_variance=fit_variance,
+            camera_inflation=camera_inflation)
         return CircleFeature(fitted.center, fitted.radius, uncertainty, score,
                              fitted.arc_coverage_deg, len(fitted.indices), fitted.accepted,
                              fitted.reasons)

@@ -50,6 +50,41 @@ T_field_camera  = T_field_base @ T_base_rig @ T_rig_optical
 Inverses: `T_base_field = invert_transform(T_field_base)` and so on;
 `se2_inverse` does the same for 2-D poses.
 
+### With a body that tilts (Phase 4)
+
+Phase 4 puts the robot's body between the base and the rig. The `base` frame is called the
+**footprint** there: the point on the ground under the body origin, turned to the body's
+heading.
+
+```
+T_field_footprint   from the pose:   Trans(x, y, 0) * Rz(yaw)
+T_footprint_body    from the tilt:   Trans(0, 0, height) * Ry(pitch) * Rx(roll)
+T_body_rig          from the mount:  Trans(mount position) * Rz(yaw) * Ry(pitch) * Rx(roll)
+T_rig_optical       fixed, as above
+T_field_camera    = T_field_footprint @ T_footprint_body @ T_body_rig @ T_rig_optical
+```
+
+| Frame | Origin | Axes | ROS counterpart |
+|---|---|---|---|
+| `footprint` (= `base`) | on the ground under the body origin | +x along the body's heading, +z up | `base_footprint` |
+| `body` | the robot's own reference: the `pelvis` of humanoid_prototype_1, midway between the hip-pitch axes | +x forward, +y left, +z up (REP-103) | `base_link` / `pelvis` |
+| IMU | the model's placeholder `imu` site at the pelvis origin | as the body | `imu_link` |
+
+- Roll, pitch and yaw are intrinsic Z-Y-X angles: `R = Rz(yaw) Ry(pitch) Rx(roll)`. With +x
+  forward and +z up, **positive pitch tips the nose down** and positive roll lifts the left
+  side. The body's tilt, the mount's angles and `RigState` all use this.
+- `T_footprint_body` has no yaw and no horizontal offset by definition: yaw and position
+  belong to the footprint pose that the localizer estimates.
+- The mount's angles are in the BODY frame; a mount pitch of 25 degrees on a body pitched 3
+  degrees forward looks 28 degrees below the horizon, and the camera has also moved forward
+  with the torso. Body tilt and mount tilt are not interchangeable (a test checks the
+  difference).
+- Quaternions are `(w, x, y, z)`, MuJoCo's order; `q_a_b` rotates coordinates from `b` to `a`
+  like `R_a_b` (`geometry/quaternion.py`).
+- An accelerometer reports specific force: at rest and level it reads `[0, 0, +9.81]`.
+- Because `Trans * Rz * Ry * Rx` is a general rigid transform, a rig on a tilted body is still
+  a `RigState`; the scene, the oracle and the labels did not have to change.
+
 ## Optical frame versus MuJoCo camera frame
 
 They are not the same, and the difference is handled explicitly in two places:
@@ -99,3 +134,9 @@ the base frame at its start: `T_base(t0)_base(t1)`. Composing it onto a pose is
 The localizer estimates `T_field_base`. In a REP-105 tree with `odom -> base_footprint` owned by
 odometry, a localization node publishes `map -> odom = T_field_base @ inverse(T_odom_base)`.
 `T_base_rig` becomes a static transform (plus the head joints, once the robot has them).
+
+With Phase 4's chain: `base_footprint -> base_link` is `T_footprint_body` (height, roll and
+pitch; on the robot it comes from the IMU and leg kinematics), and `base_link -> camera` is
+the mount, a static transform from the head's calibration. The localization node needs the
+camera pose **at the image's header stamp**, not the latest transform: on ROS that is a
+`lookupTransform` with the image's time, which is what `OrientationHistory.at` does here.

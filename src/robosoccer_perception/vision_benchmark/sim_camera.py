@@ -29,30 +29,44 @@ class SimulatedCamera:
 
     def __init__(self, field: FieldGeometry, camera_cfg: StereoCameraConfig,
                  scene_overrides: dict[str, Any] | None = None, with_labels: bool = False,
-                 photometric: dict[str, Any] | None = None, scene: str = "default"):
+                 photometric: dict[str, Any] | None = None, scene: str = "default",
+                 robot=None, mount=None, show_self: bool = False):
         self.field, self.camera_cfg = field, camera_cfg
         self.policy = LabelPolicy()
         overrides = dict(scene_overrides or {})
         if with_labels:
             overrides = config.deep_update(overrides, {"offscreen_scale": self.policy.supersample})
-        self.scene = MujocoScene(field, camera_cfg, load_scene_config(scene, overrides))
+        # ``robot`` / ``mount`` (Phase 4) put a posable robot body in the scene; ``show_self``
+        # lets the camera see that body, as a real camera would see its own robot.
+        self.scene = MujocoScene(field, camera_cfg, load_scene_config(scene, overrides),
+                                 robot=robot, mount=mount)
+        self.show_self = bool(show_self and robot is not None)
         self.labeler = SceneLabeler(self.scene, self.policy) if with_labels else None
         self.photometric = photometric          # the ``image`` section of a randomization preset
         self.ball_radius = float(self.scene.scene_cfg["ball"]["radius"])
 
     def capture(self, base_pose, truth: SimulationCameraTruth, ball_xy=None, robots=(),
-                rng: np.random.Generator | None = None) -> np.ndarray:
-        """Place everything and render the left image (H, W, 3 uint8 RGB)."""
+                rng: np.random.Generator | None = None, body=None) -> np.ndarray:
+        """Place everything and render the left image (H, W, 3 uint8 RGB). ``body`` (a
+        `simulation.humanoid.BodyPose`) poses the robot's body in a Phase 4 scene."""
         if type(truth) is not SimulationCameraTruth:
             raise TypeError("the simulator is driven by SimulationCameraTruth")
         self.scene.teleport(base_pose, truth.true_rig)
         self.scene.set_ball(ball_xy)
         self.scene.set_robots(list(robots))
-        image = self.scene.render(LEFT_CAMERA, show_platform=False)
+        if body is not None:
+            humanoid = self.scene.humanoid
+            self.scene.set_body(body.T_footprint_body,
+                                None if humanoid is None else humanoid.joints_for(body))
+        image = self.scene.render(LEFT_CAMERA, show_platform=self.show_self)
         if self.photometric and self.photometric.get("enabled") and rng is not None:
             image = image_aug.apply_photometric(
                 image, image_aug.sample_photometric(rng, self.photometric))
         return image
+
+    def chase_view(self) -> np.ndarray:
+        """Third-person picture of the robot as it stands now, with the mount markers."""
+        return self.scene.render_chase()
 
     def labels_as_vision(self) -> VisionResult:
         """GROUND-TRUTH labels of the current frame in the vision pipeline's output format:

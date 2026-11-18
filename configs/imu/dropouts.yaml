@@ -1,0 +1,16 @@
+# The nominal IMU on a bad link: 30 % of the samples lost, plus an outage of 0.1 to 0.4 s
+# about every four seconds.
+name: dropouts
+rate_hz: 200.0
+rate_jitter: 0.02
+gyro_noise_std: 0.002
+accel_noise_std: 0.03
+gyro_bias_std: 0.010
+accel_bias_std: 0.05
+gyro_bias_walk: 2.0e-4
+accel_bias_walk: 1.0e-3
+latency_s: 0.004
+latency_jitter_s: 0.001
+dropout_prob: 0.30
+outage_rate_hz: 0.25
+outage_duration_s: [0.10, 0.40]

@@ -3,8 +3,12 @@
 diagnostics of one scenario, frame by frame. See docs/viewer.md.
 
 Examples:
-    python scripts/visualize_pipeline.py                              # the window, v04_rectangle
-    python scripts/visualize_pipeline.py v13a_kidnapped --seed 2 --autoplay
+    python scripts/visualize_pipeline.py                      # the window, h05_walk_rectangle:
+                                                              # the humanoid walking a rectangle
+    python scripts/visualize_pipeline.py h02 --fusion fixed   # sway, with the Phase 3 camera model
+    python scripts/visualize_pipeline.py h05 --mount head_high --motion walking_rough
+    python scripts/visualize_pipeline.py h05 --robot placeholder --mount legacy_rig
+    python scripts/visualize_pipeline.py v13a_kidnapped --seed 2 --autoplay     # a Phase 3 scenario
     python scripts/visualize_pipeline.py --replay outputs/viewer/recordings/<file>.npz
     python scripts/visualize_pipeline.py --list
 
@@ -29,8 +33,18 @@ import time
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("scenario", nargs="?", default="v04_rectangle",
+    parser.add_argument("scenario", nargs="?", default="h05_walk_rectangle",
                         help="scenario id or a prefix of one (see --list)")
+    body = parser.add_argument_group(
+        "Phase 4 scenarios (h...)", "the body, its virtual camera mount, its motion and the "
+        "camera-pose estimator; each defaults to the scenario's own")
+    body.add_argument("--robot", help="humanoid_prototype_1 or placeholder (configs/robots/)")
+    body.add_argument("--mount", help="camera mount preset (configs/mounts/); experimental")
+    body.add_argument("--motion", help="body motion profile (configs/motion/)")
+    body.add_argument("--fusion", default="imu_uncertainty",
+                      help="camera pose: fixed, imu, imu_uncertainty, imu_selfcal, imu_latest")
+    body.add_argument("--no-robot-view", action="store_true",
+                      help="do not render the third-person picture of the robot")
     parser.add_argument("--list", action="store_true", help="list the scenarios and exit")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--speed", default="1",
@@ -58,15 +72,18 @@ def main() -> int:
                        help="save N evenly spaced four-panel pictures")
     args = parser.parse_args()
 
-    from robosoccer_perception.vision_benchmark.scenarios import SCENARIOS, select_scenarios
+    from robosoccer_perception.viewer import catalog
+    from robosoccer_perception.viewer.humanoid_session import SessionOptions
 
     if args.list:
-        for scenario in SCENARIOS.values():
+        for scenario in catalog.all_scenarios():
             print(f"{scenario.id:<32}{scenario.title}")
         return 0
     try:
-        scenario = select_scenarios([args.scenario])[0]
-    except KeyError as error:
+        scenario = catalog.find_scenario(args.scenario)
+        options = SessionOptions(robot=args.robot, mount=args.mount, motion=args.motion,
+                                 fusion=args.fusion, robot_view=not args.no_robot_view)
+    except (KeyError, ValueError) as error:
         parser.error(str(error.args[0]))
     speed = math.inf if args.speed == "max" else float(args.speed)
 
@@ -113,7 +130,8 @@ def main() -> int:
             video=video, screenshots=args.screenshots,
             layers=Layers(ground_truth=not args.no_ground_truth),
             with_truth=True, max_particles=args.particles,
-            video_speed=1.0 if math.isinf(speed) else speed, progress=progress)
+            video_speed=1.0 if math.isinf(speed) else speed, progress=progress,
+            options=options)
         summary["wall_time_s"] = round(time.perf_counter() - started, 1)
         print(json.dumps(summary, indent=2))
         return 0
@@ -130,7 +148,7 @@ def main() -> int:
     return run_app(load_resources, scenario=scenario.id, seed=args.seed, speed=speed,
                    max_particles=args.particles, max_steps=args.max_steps,
                    show_truth=not args.no_ground_truth, autoplay=args.autoplay,
-                   replay=args.replay)
+                   replay=args.replay, options=options)
 
 
 if __name__ == "__main__":

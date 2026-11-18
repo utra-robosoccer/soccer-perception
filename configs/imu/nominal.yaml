@@ -1,0 +1,19 @@
+# SIMULATED IMU on the robot's body. The numbers are typical of a consumer MEMS IMU after a
+# basic bench calibration; they are NOT measurements of the robot's sensor. humanoid_prototype_1
+# has no IMU in its CAD yet, only a placeholder site at the pelvis origin.
+name: nominal
+rate_hz: 200.0
+rate_jitter: 0.02               # 1 sigma of each sampling interval, as a share of the period
+gyro_noise_std: 0.002           # rad/s per sample (about 0.11 deg/s)
+accel_noise_std: 0.03           # m/s^2 per sample
+gyro_bias_std: 0.010            # rad/s per axis at switch-on (about 0.6 deg/s)
+accel_bias_std: 0.05            # m/s^2 per axis (about 5 mg: 0.3 deg of apparent tilt)
+gyro_bias_walk: 2.0e-4          # rad/s per sqrt(s)
+accel_bias_walk: 1.0e-3         # m/s^2 per sqrt(s)
+latency_s: 0.004                # sample to arrival
+latency_jitter_s: 0.001
+dropout_prob: 0.0               # share of samples lost
+outage_rate_hz: 0.0             # longer outages per second
+outage_duration_s: [0.10, 0.40]
+timestamp_offset_s: 0.0         # HIDDEN clock offset: reported timestamp minus true time
+misalignment_deg: [0.0, 0.0, 0.0]   # HIDDEN: the sensor's true axes versus the believed ones

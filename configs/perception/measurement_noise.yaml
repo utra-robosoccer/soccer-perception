@@ -37,3 +37,12 @@ junction_inflation: 1.5
 circle_pixel_std: 1.0
 circle_std_floor: 0.05        # m
 circle_inflation: 1.5
+
+# Camera error shared by every feature of a frame (Phase 4). Off reproduces Phase 3 exactly.
+# On: the camera part's variance is multiplied by the number of independent terms that share
+# it (the localizer's line_point_weight times the points it uses), capped below. See
+# docs/humanoid_fusion.md, "Uncertainty-aware projection".
+shared_camera_error: false
+shared_error_point_weight: 0.3    # keep equal to localization.measurement.line_point_weight
+shared_error_max_points: 40       # keep equal to localization.measurement.max_line_points
+shared_error_max_inflation: 12.0

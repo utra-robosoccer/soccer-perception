@@ -1,0 +1,271 @@
+{
+  "name": "humanoid_prototype_1",
+  "imported_at": "2026-11-17T21:32:57-0500",
+  "source": {
+    "directory": "humanoid_prototype_1",
+    "robot_xml_sha256": "7e96bd08c8f72c625c0d72a2221ba76a2fad07fb95d8543999207f19cd10788d",
+    "git_commit": "bb4a3bbe819ab7aecf3bffbf3f0df846d33f0d43",
+    "git_dirty": false
+  },
+  "kept": [
+    "bodies",
+    "inertials",
+    "hinge joints",
+    "sites",
+    "visual meshes"
+  ],
+  "removed": [
+    "floating-base joint",
+    "collision geoms and meshes",
+    "contact exclusions",
+    "equality constraints",
+    "actuators",
+    "sensors"
+  ],
+  "visual_geoms": [
+    {
+      "body": "pelvis",
+      "geom": "pelvis_visual",
+      "mesh": "pelvis"
+    },
+    {
+      "body": "left_hip_pitch_link",
+      "geom": "left_hip_pitch_link_visual",
+      "mesh": "left_hip_pitch_link"
+    },
+    {
+      "body": "left_hip_roll_link",
+      "geom": "left_hip_roll_link_visual",
+      "mesh": "left_hip_roll_link"
+    },
+    {
+      "body": "left_hip_yaw_link",
+      "geom": "left_hip_yaw_link_visual",
+      "mesh": "left_hip_yaw_link"
+    },
+    {
+      "body": "left_knee_link",
+      "geom": "left_knee_link_visual",
+      "mesh": "left_knee_link"
+    },
+    {
+      "body": "left_ankle_horn_link",
+      "geom": "left_ankle_horn_link_visual",
+      "mesh": "left_ankle_horn_link"
+    },
+    {
+      "body": "left_foot_link",
+      "geom": "left_foot_link_visual",
+      "mesh": "left_foot_link"
+    },
+    {
+      "body": "left_ankle_rod_link",
+      "geom": "left_ankle_rod_link_visual",
+      "mesh": "left_ankle_rod_link"
+    },
+    {
+      "body": "right_hip_pitch_link",
+      "geom": "right_hip_pitch_link_visual",
+      "mesh": "right_hip_pitch_link"
+    },
+    {
+      "body": "right_hip_roll_link",
+      "geom": "right_hip_roll_link_visual",
+      "mesh": "right_hip_roll_link"
+    },
+    {
+      "body": "right_hip_yaw_link",
+      "geom": "right_hip_yaw_link_visual",
+      "mesh": "right_hip_yaw_link"
+    },
+    {
+      "body": "right_knee_link",
+      "geom": "right_knee_link_visual",
+      "mesh": "right_knee_link"
+    },
+    {
+      "body": "right_foot_link",
+      "geom": "right_foot_link_visual",
+      "mesh": "right_foot_link"
+    },
+    {
+      "body": "right_ankle_rod_link",
+      "geom": "right_ankle_rod_link_visual",
+      "mesh": "right_ankle_rod_link"
+    },
+    {
+      "body": "right_ankle_horn_link",
+      "geom": "right_ankle_horn_link_visual",
+      "mesh": "right_ankle_horn_link"
+    },
+    {
+      "body": "left_shoulder_pitch_link",
+      "geom": "left_shoulder_pitch_link_visual",
+      "mesh": "left_shoulder_pitch_link"
+    },
+    {
+      "body": "left_shoulder_roll_link",
+      "geom": "left_shoulder_roll_link_visual",
+      "mesh": "left_shoulder_roll_link"
+    },
+    {
+      "body": "left_elbow_link",
+      "geom": "left_elbow_link_visual",
+      "mesh": "left_elbow_link"
+    },
+    {
+      "body": "right_shoulder_pitch_link",
+      "geom": "right_shoulder_pitch_link_visual",
+      "mesh": "right_shoulder_pitch_link"
+    },
+    {
+      "body": "right_shoulder_roll_link",
+      "geom": "right_shoulder_roll_link_visual",
+      "mesh": "right_shoulder_roll_link"
+    },
+    {
+      "body": "right_elbow_link",
+      "geom": "right_elbow_link_visual",
+      "mesh": "right_elbow_link"
+    }
+  ],
+  "meshes": {
+    "left_ankle_horn_link": {
+      "file": "left_ankle_horn_link.stl",
+      "sha256": "8d4379a3c0a768b055d7020bdb5666b858779c4ffa0e3c3d5e078a30d86f667d",
+      "triangles": 6006,
+      "vertices": 2991
+    },
+    "left_ankle_rod_link": {
+      "file": "left_ankle_rod_link.stl",
+      "sha256": "c3e5f26971c3ace3e83cec2a3b39b1b54ef22bf3c82e858858d09f99f6d718ff",
+      "triangles": 916,
+      "vertices": 456
+    },
+    "left_elbow_link": {
+      "file": "left_elbow_link.stl",
+      "sha256": "b1f06040984de05ba4225ce178cbdb337dbb67a17c18f83ac798cec9578aaa32",
+      "triangles": 10762,
+      "vertices": 5359
+    },
+    "left_foot_link": {
+      "file": "left_foot_link.stl",
+      "sha256": "cc443a257ea6a60039503bd2425dc229f07679b1a2c5b77af95f7319222b8787",
+      "triangles": 12120,
+      "vertices": 6058
+    },
+    "left_hip_pitch_link": {
+      "file": "left_hip_pitch_link.stl",
+      "sha256": "4f04e822c1a5cfe6bfa3f5c7b9d761e64666da02eb6816893de6fd1e186dd083",
+      "triangles": 21278,
+      "vertices": 10506
+    },
+    "left_hip_roll_link": {
+      "file": "left_hip_roll_link.stl",
+      "sha256": "1e8f20dd3d6234ad94758088afd158801488a50e63e9d51d2f992088cdc4ebc6",
+      "triangles": 19006,
+      "vertices": 9413
+    },
+    "left_hip_yaw_link": {
+      "file": "left_hip_yaw_link.stl",
+      "sha256": "20c51d6cacca984364b43254834bcfcd53208f2376290ab33cd65fcad5df6f73",
+      "triangles": 23160,
+      "vertices": 11510
+    },
+    "left_knee_link": {
+      "file": "left_knee_link.stl",
+      "sha256": "d16586d58b42c13607054eda14fd798a1af8201fe45a43552c06144eba1aa9fe",
+      "triangles": 13924,
+      "vertices": 6882
+    },
+    "left_shoulder_pitch_link": {
+      "file": "left_shoulder_pitch_link.stl",
+      "sha256": "e8d85b7825131d49a4e085811360830ba88960290fdb86fe53bec739ec943ee2",
+      "triangles": 7260,
+      "vertices": 3600
+    },
+    "left_shoulder_roll_link": {
+      "file": "left_shoulder_roll_link.stl",
+      "sha256": "3c2322464a791786ed224fab4857d8df0c841958f52a934899be9cd1d0e64bb1",
+      "triangles": 20182,
+      "vertices": 10049
+    },
+    "pelvis": {
+      "file": "pelvis.stl",
+      "sha256": "8ad434aa3f76128ef598ffa50175c8286df41c2a80a38202d96fe04993cef1a6",
+      "triangles": 38642,
+      "vertices": 19089
+    },
+    "right_ankle_horn_link": {
+      "file": "right_ankle_horn_link.stl",
+      "sha256": "b154365324d722de5cc8ead48e0d7375032766cda86f1a6049ef57c16be968f7",
+      "triangles": 6006,
+      "vertices": 2990
+    },
+    "right_ankle_rod_link": {
+      "file": "right_ankle_rod_link.stl",
+      "sha256": "624eacdffe7e4c3d77068ce100b215c0794e5d1aec44829ac0c6267413fe42a0",
+      "triangles": 916,
+      "vertices": 456
+    },
+    "right_elbow_link": {
+      "file": "right_elbow_link.stl",
+      "sha256": "1ecc352aae8a9858c1260e77045a55bbfe45dacb407bc468819470aa68ed33b7",
+      "triangles": 10762,
+      "vertices": 5359
+    },
+    "right_foot_link": {
+      "file": "right_foot_link.stl",
+      "sha256": "5b646878a65664ba8174dcb5e1d2ede9dd1addf150779de4f0243dd86f27e2cf",
+      "triangles": 12120,
+      "vertices": 6058
+    },
+    "right_hip_pitch_link": {
+      "file": "right_hip_pitch_link.stl",
+      "sha256": "4c63c76177e6edeed1259e02799e1dae0a7170adb3128ba3a24fc162a717e453",
+      "triangles": 21278,
+      "vertices": 10507
+    },
+    "right_hip_roll_link": {
+      "file": "right_hip_roll_link.stl",
+      "sha256": "fa96ef24ea4483abef477aa5daeb5935e535cd6223723738673dd39a4029cbcb",
+      "triangles": 19006,
+      "vertices": 9413
+    },
+    "right_hip_yaw_link": {
+      "file": "right_hip_yaw_link.stl",
+      "sha256": "62f538223095807c97d802fe224a090f078fd930f493623e88d0b78893c5ae6b",
+      "triangles": 23160,
+      "vertices": 11510
+    },
+    "right_knee_link": {
+      "file": "right_knee_link.stl",
+      "sha256": "5e524a2c56666a902295f75a8fff5f5d2caae8d2da2ee57c755092592c8185e5",
+      "triangles": 13924,
+      "vertices": 6882
+    },
+    "right_shoulder_pitch_link": {
+      "file": "right_shoulder_pitch_link.stl",
+      "sha256": "072292ce8ecd94fabcce7d1b2b5a65ef6c3cb1f1bd377a0682754720464b3748",
+      "triangles": 7260,
+      "vertices": 3600
+    },
+    "right_shoulder_roll_link": {
+      "file": "right_shoulder_roll_link.stl",
+      "sha256": "b1a917bb2c0acfbac5cbcade14b61cd8793ab37bb5a7cf04d157d69838658926",
+      "triangles": 20186,
+      "vertices": 10051
+    }
+  },
+  "triangles": 307874,
+  "home_stance": {
+    "left_hip_pitch_joint": -0.2,
+    "left_knee_joint": 0.4,
+    "left_ankle_pitch_joint": -0.2,
+    "right_hip_pitch_joint": -0.2,
+    "right_knee_joint": 0.4,
+    "right_ankle_pitch_joint": -0.2,
+    "left_shoulder_roll_joint": -1.2,
+    "right_shoulder_roll_joint": 1.2
+  }
+}

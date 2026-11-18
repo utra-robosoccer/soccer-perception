@@ -1,0 +1,28 @@
+# UTRA's humanoid_prototype_1, as a KINEMATIC, VISUAL-ONLY body for perception experiments.
+# The model is imported from soccer-software (scripts/import_humanoid_model.py); see
+# docs/humanoid_integration.md for exactly what is and is not taken over.
+name: humanoid_prototype_1
+kind: mjcf
+asset_dir: robots/humanoid_prototype_1      # under assets/ (ROBOSOCCER_PERCEPTION_ASSET_DIR)
+body_frame: pelvis
+# Joint angles of the stance the robot stands in (radians): the MJCF keyframe "home" of the
+# official stand configuration. Joints not listed are at zero.
+stance:
+  left_hip_pitch_joint: -0.2
+  left_knee_joint: 0.4
+  left_ankle_pitch_joint: -0.2
+  right_hip_pitch_joint: -0.2
+  right_knee_joint: 0.4
+  right_ankle_pitch_joint: -0.2
+  left_shoulder_roll_joint: -1.2
+  right_shoulder_roll_joint: 1.2
+# APPEARANCE ASSUMPTION: the meshes carry no colour. Printed parts are shown dark grey.
+appearance:
+  rgba: [0.20, 0.21, 0.23, 1.0]
+  foot_rgba: [0.10, 0.10, 0.11, 1.0]
+# COSMETIC leg and arm swing while the body walks (simulation/humanoid.py). It makes the robot
+# look like it is stepping; it is not a gait and has no effect on the camera or the IMU.
+gait:
+  step_length_m: 0.07             # fore-aft travel of a foot over a step
+  step_height_m: 0.025
+  arm_swing_rad: 0.25

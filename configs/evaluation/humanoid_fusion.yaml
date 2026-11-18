@@ -1,0 +1,32 @@
+# Phase 4 benchmark settings: the Phase 3 settings (models, image size, extraction, filter)
+# plus what is new here. Used by scripts/benchmark_humanoid_fusion.py and the viewer.
+# See docs/phase4_validation.md.
+name: humanoid_fusion
+base: vision_localization          # configs/evaluation/: models, resolution, configurations
+
+seeds: 3                           # seeds 0 .. N-1
+
+# The camera-pose estimator (estimation/camera_pose.py). Empty blocks use the defaults that
+# are documented in the code; every key of FusionConfig, TiltFilterConfig and SyncConfig may
+# be set here.
+fusion:
+  height_std_moving: 0.010         # m: the body bobs while it walks
+  max_tilt_std_deg: 6.0
+  filter: {}
+  synchronisation: {}
+
+# The mount-calibration monitor (estimation/calibration_monitor.py).
+monitor: {}
+
+calibration_sweep:                 # error = the robot's estimate minus the truth
+  scenario: h05_walk_rectangle
+  seeds: 3
+  parameters:
+    pitch_deg: [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]
+    roll_deg: [-2.0, -1.0, 0.0, 1.0, 2.0]
+    height_m: [-0.05, -0.02, 0.0, 0.02, 0.05]
+
+timing_sweep:                      # image timestamp the arm uses minus the true one
+  scenario: h05_walk_rectangle
+  seeds: 3
+  offsets_ms: [-80.0, -40.0, -20.0, 0.0, 20.0, 40.0, 80.0]

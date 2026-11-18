@@ -1,0 +1,14 @@
+# The capsule platform of Phases 1 to 3: a camera on a stick. It has no body geometry of its
+# own, so a body frame is ASSUMED at roughly hip height to give body sway a pivot.
+name: placeholder
+kind: placeholder
+body_frame: pelvis
+body_geometry:
+  model: placeholder
+  body_frame: pelvis
+  standing_height_m: 0.45         # assumed
+  torso_top_m: [0.0, 0.0, 0.33]   # assumed: the capsule's top, 0.78 m above the ground
+  imu_xyz_m: [0.0, 0.0, 0.0]
+  imu_rpy_deg: [0.0, 0.0, 0.0]
+  placeholder: true
+  note: "Assumed numbers for the placeholder platform; not a robot."

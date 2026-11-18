@@ -1,0 +1,18 @@
+# EXPERIMENTAL ASSUMPTION, NOT A MECHANICAL DESIGN. The head of humanoid_prototype_1 has not
+# been designed; this file places a virtual ZED Mini so that perception can be studied now.
+# Lowest head considered: lenses 6 cm above the torso, about 0.74 m above the ground.
+#
+# The transform is the stereo rig centre (midpoint of the two lenses) in the robot's PELVIS
+# frame (+x forward, +y left, +z up). The offset is measured from the TOP-CENTRE OF THE TORSO
+# MESH, which is taken from the model's geometry (assets/robots/<robot>/body_geometry.yaml),
+# so the camera height is never typed in: height above ground
+#   = standing height of the pelvis + torso top above the pelvis + xyz_m[2].
+# Replace this file with the measured transform when the real head exists (docs/camera_mount.md).
+name: head_low
+experimental: true
+parent_frame: pelvis
+reference: torso_top            # body | torso_top | ground
+xyz_m: [0.03, 0.0, 0.06]          # forward, left, up from the reference, metres
+rpy_deg: [0.0, 25.0, 0.0]       # roll, pitch, yaw; POSITIVE PITCH LOOKS DOWN (rotation about +y)
+head_extension: true            # draw a mast from the torso to the camera (a marker, no mass)
+note: "Lowest head considered: lenses 6 cm above the torso, about 0.74 m above the ground."

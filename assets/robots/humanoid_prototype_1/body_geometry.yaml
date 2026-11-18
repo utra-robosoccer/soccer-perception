@@ -1,0 +1,32 @@
+# MEASURED from the imported model by scripts/import_humanoid_model.py; do not edit.
+# standing_height_m: the pelvis origin above the lowest point of the feet in the stand
+#   pose. torso_top_m: the centre of the topmost surface of the torso (pelvis link)
+#   mesh, in the pelvis frame. The robot has NO HEAD yet: this is the top of the torso.
+body_geometry:
+  model: humanoid_prototype_1
+  body_frame: pelvis
+  standing_height_m: 0.405698
+  torso_top_m:
+  - -3.5e-05
+  - 0.0
+  - 0.273
+  imu_xyz_m:
+  - 0.0
+  - 0.0
+  - 0.0
+  imu_rpy_deg:
+  - 0.0
+  - -0.0
+  - 0.0
+  placeholder: false
+  note: Measured from the imported meshes in the stand pose. The IMU is the model's
+    placeholder site at the pelvis origin; the robot has no head.
+stance:
+  left_hip_pitch_joint: -0.2
+  left_knee_joint: 0.4
+  left_ankle_pitch_joint: -0.2
+  right_hip_pitch_joint: -0.2
+  right_knee_joint: 0.4
+  right_ankle_pitch_joint: -0.2
+  left_shoulder_roll_joint: -1.2
+  right_shoulder_roll_joint: 1.2

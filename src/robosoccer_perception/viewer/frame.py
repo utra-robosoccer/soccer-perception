@@ -9,7 +9,8 @@ source a panel could read from.
 the scrubbing history and for recordings; `unpack` reverses it.
 
 Ground truth appears here in exactly one place, the optional `truth` field, and is for display
-only. Nothing in this module is read by the estimator.
+only. Nothing in this module is read by the estimator. `fusion` (Phase 4) is the opposite: the
+robot's own belief about its body tilt and camera pose, computed without ground truth.
 """
 from __future__ import annotations
 
@@ -49,6 +50,32 @@ class TruthView:
     mirror_position_error: float        # the same against the half-turn mirror of the truth
     mirror_yaw_error_deg: float
     kidnapped: bool = False             # the robot was moved at this step
+    # ---- Phase 4 (NaN when the run has no moving body): degrees and metres
+    body_roll_deg: float = float("nan")         # true tilt of the robot's body
+    body_pitch_deg: float = float("nan")
+    camera_roll_deg: float = float("nan")       # true orientation of the camera
+    camera_pitch_deg: float = float("nan")
+    camera_height: float = float("nan")
+
+
+@dataclasses.dataclass(frozen=True)
+class FusionView:
+    """What the robot believes about its body and camera in this frame (Phase 4 runs). Every
+    number here was computed WITHOUT ground truth; the true values are in `TruthView`."""
+    source: str                         # nominal | imu | imu_latest | nominal_fallback
+    body_roll_deg: float                # estimated body tilt (0 when the camera pose is fixed)
+    body_pitch_deg: float
+    tilt_std_deg: float                 # NaN when no IMU estimate was used
+    camera_roll_deg: float              # estimated camera orientation used for projection
+    camera_pitch_deg: float
+    camera_height: float                # metres
+    sync_method: str = ""               # interpolated | extrapolated | held | latest | none
+    sync_offset_ms: float = float("nan")    # image timestamp to the nearest IMU estimate
+    imu_samples: int = 0                # IMU samples delivered with this frame
+    monitor_status: str = ""            # mount-calibration monitor; "" when it is not running
+    monitor_bias_deg: tuple[float, float] = (float("nan"), float("nan"))    # roll, pitch
+    monitor_correction_deg: tuple[float, float] = (0.0, 0.0)
+    line_residual: float = float("nan")     # metres: field-line consistency residual
 
 
 @dataclasses.dataclass(frozen=True)
@@ -102,6 +129,9 @@ class ViewerFrame:
     sim_fps: float                      # steps per wall-clock second when this frame was made
     # ---- display only
     truth: TruthView | None = None
+    # ---- Phase 4: the robot's camera-pose estimate and a third-person picture of the robot
+    fusion: FusionView | None = None
+    robot_view: np.ndarray | None = None    # (h, w, 3) uint8 RGB from the chase camera
 
     @property
     def inference_ms(self) -> float:
@@ -143,7 +173,21 @@ def pack(frame: ViewerFrame) -> dict[str, np.ndarray]:
         t = frame.truth
         out["truth"] = np.array([*t.pose, t.position_error, t.yaw_error_deg,
                                  t.mirror_position_error, t.mirror_yaw_error_deg,
-                                 float(t.kidnapped)])
+                                 float(t.kidnapped), t.body_roll_deg, t.body_pitch_deg,
+                                 t.camera_roll_deg, t.camera_pitch_deg, t.camera_height])
+    if frame.fusion is not None:
+        f = frame.fusion
+        out["fusion"] = np.array([f.body_roll_deg, f.body_pitch_deg, f.tilt_std_deg,
+                                  f.camera_roll_deg, f.camera_pitch_deg, f.camera_height,
+                                  f.sync_offset_ms, float(f.imu_samples), *f.monitor_bias_deg,
+                                  *f.monitor_correction_deg, f.line_residual])
+        out["fusion_text"] = np.array("|".join([f.source, f.sync_method, f.monitor_status]))
+    if frame.robot_view is not None:
+        ok_view, view = cv2.imencode(".jpg", cv2.cvtColor(frame.robot_view, cv2.COLOR_RGB2BGR),
+                                     [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+        if not ok_view:
+            raise RuntimeError("could not encode the robot view")
+        out["robot_view_jpg"] = view.ravel()
     return out
 
 
@@ -164,9 +208,19 @@ def unpack(data) -> ViewerFrame:
     if "truth" in data:
         t = np.asarray(data["truth"])
         truth = TruthView(t[0:3].copy(), float(t[3]), float(t[4]), float(t[5]), float(t[6]),
-                          bool(t[7]))
+                          bool(t[7]), *(float(v) for v in t[8:13]))    # older files stop at 8
+    fusion = None
+    if "fusion" in data:
+        f = [float(v) for v in np.asarray(data["fusion"])]
+        source, method, status = str(np.asarray(data["fusion_text"])).split("|")
+        fusion = FusionView(source, f[0], f[1], f[2], f[3], f[4], f[5], method, f[6], int(f[7]),
+                            status, (f[8], f[9]), (f[10], f[11]), f[12])
+    robot_view = None
+    if "robot_view_jpg" in data:
+        robot_view = cv2.cvtColor(cv2.imdecode(np.asarray(data["robot_view_jpg"]),
+                                               cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     return ViewerFrame(image=image, mask=mask, detections=detections, timing_ms=timing,
-                       truth=truth, **values)
+                       truth=truth, fusion=fusion, robot_view=robot_view, **values)
 
 
 # ------------------------------------------------------------------------------- timeline
@@ -178,7 +232,13 @@ class Timeline:
     """
     SERIES = ("position_error", "yaw_error_deg", "confidence", "ess_fraction", "position_std",
               "yaw_std_deg", "inference_ms", "total_ms", "sim_fps", "ambiguous", "converged",
-              "kidnapped", "est_x", "est_y", "true_x", "true_y")
+              "kidnapped", "est_x", "est_y", "true_x", "true_y",
+              # Phase 4: camera orientation, estimated (no truth) and true (display only)
+              "est_camera_pitch", "est_camera_roll", "tilt_std", "true_camera_pitch",
+              "true_camera_roll")
+    #: series a recording made before Phase 4 does not have; they load as "never recorded"
+    OPTIONAL = ("est_camera_pitch", "est_camera_roll", "tilt_std", "true_camera_pitch",
+                "true_camera_roll")
 
     def __init__(self, steps: int, dt: float):
         self.steps, self.dt = int(steps), float(dt)
@@ -209,6 +269,12 @@ class Timeline:
             v["yaw_error_deg"][step] = frame.truth.yaw_error_deg
             v["kidnapped"][step] = float(frame.truth.kidnapped)
             v["true_x"][step], v["true_y"][step] = frame.truth.pose[0], frame.truth.pose[1]
+            v["true_camera_pitch"][step] = frame.truth.camera_pitch_deg
+            v["true_camera_roll"][step] = frame.truth.camera_roll_deg
+        if frame.fusion is not None:
+            v["est_camera_pitch"][step] = frame.fusion.camera_pitch_deg
+            v["est_camera_roll"][step] = frame.fusion.camera_roll_deg
+            v["tilt_std"][step] = frame.fusion.tilt_std_deg
         self.last = max(self.last, step)
 
     def clear(self) -> None:
@@ -224,7 +290,10 @@ class Timeline:
         steps = len(np.asarray(data[f"timeline__{cls.SERIES[0]}"]))
         timeline = cls(steps, dt)
         for name in cls.SERIES:
-            timeline.values[name] = np.asarray(data[f"timeline__{name}"], dtype=float).copy()
+            key = f"timeline__{name}"
+            if name in cls.OPTIONAL and key not in data:
+                continue                            # an older recording: stays NaN
+            timeline.values[name] = np.asarray(data[key], dtype=float).copy()
         recorded = np.flatnonzero(np.isfinite(timeline.values["confidence"]))
         timeline.last = int(recorded[-1]) if len(recorded) else -1
         return timeline

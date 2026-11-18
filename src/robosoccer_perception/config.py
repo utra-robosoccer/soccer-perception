@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 CONFIG_DIR_ENV = "ROBOSOCCER_PERCEPTION_CONFIG_DIR"
+ASSET_DIR_ENV = "ROBOSOCCER_PERCEPTION_ASSET_DIR"
 
 
 def config_dir() -> Path:
@@ -26,6 +27,15 @@ def config_dir() -> Path:
     if override:
         return Path(override)
     return Path(__file__).resolve().parents[2] / "configs"
+
+
+def assets_dir() -> Path:
+    """Directory that holds imported assets (``robots/<name>/``): the
+    ``ROBOSOCCER_PERCEPTION_ASSET_DIR`` environment variable, else ``assets/`` next to ``src/``."""
+    override = os.environ.get(ASSET_DIR_ENV)
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[2] / "assets"
 
 
 def resolve_config(kind: str, name_or_path: str | os.PathLike) -> Path:

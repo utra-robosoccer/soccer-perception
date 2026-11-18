@@ -1,0 +1,11 @@
+# The camera placement of Phases 1 to 3, expressed as a mount: 0.90 m above the GROUND and 5 cm
+# ahead of the robot's centre, whatever the body is. It is NOT derived from the humanoid's
+# geometry; it exists so that the placeholder platform and earlier results stay reproducible.
+name: legacy_rig
+experimental: true
+parent_frame: pelvis
+reference: ground               # offset from the point on the ground under the pelvis
+xyz_m: [0.05, 0.0, 0.90]
+rpy_deg: [0.0, 25.0, 0.0]
+head_extension: true
+note: "Phase 1 to 3 placeholder: 0.90 m above the ground, not tied to any body geometry."

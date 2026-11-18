@@ -1,0 +1,93 @@
+<mujoco model="humanoid_prototype_1">
+  <compiler angle="radian" inertiafromgeom="false" boundmass="0" boundinertia="0" />
+  <worldbody>
+    <body name="pelvis" pos="0 0 0.413422">
+      <inertial pos="-0.0023867277 2.5998e-06 0.0818752464" mass="4.245518151" fullinertia="0.05661719876 0.05015889229 0.01426408545 -1.97447754e-08 0.0008938910997 -6.564719071e-07" />
+      <site name="imu" pos="0 0 0" quat="1 0 0 0" size="0.01" />
+      <body name="left_hip_pitch_link" pos="0 0.065 0" quat="1 0 0 0">
+        <inertial pos="0.0019075936 0.0473537679 5.32428e-05" mass="0.849026629" fullinertia="0.0007915689102 0.0006476802511 0.0006667196501 -3.109455019e-07 3.143812816e-07 5.367850355e-06" />
+        <joint name="left_hip_pitch_joint" type="hinge" axis="0 1 0" range="-1.8 0.8" damping="0" frictionloss="0" armature="0.0114" />
+        <body name="left_hip_roll_link" pos="0.043 0.048 0" quat="1 0 0 0">
+          <inertial pos="-0.0414365234 -4.15214e-05 -0.0728711744" mass="0.7528411454" fullinertia="0.001009738563 0.001225422995 0.0007784867694 -1.379111872e-07 -3.901166786e-05 5.936635207e-07" />
+          <joint name="left_hip_roll_joint" type="hinge" axis="1 0 0" range="-0.1 0.8" damping="0" frictionloss="0" armature="0.0061" />
+          <body name="left_hip_yaw_link" pos="-0.043 0 -0.124" quat="1 0 0 0">
+            <inertial pos="-2.1985e-06 -0.0047517853 -0.0578158586" mass="1.157357524" fullinertia="0.001123565334 0.001478412225 0.001091835194 4.0483358e-08 1.58199025e-08 -1.605647302e-06" />
+            <joint name="left_hip_yaw_joint" type="hinge" axis="0 0 1" range="-0.8 0.8" damping="0" frictionloss="0" armature="0.002" />
+            <body name="left_knee_link" pos="0 0.0381 -0.058421" quat="1 0 0 0">
+              <inertial pos="0.0005727173 -0.0342714679 -0.1043126241" mass="0.6531720518" fullinertia="0.001874944815 0.001533060832 0.0005914697706 1.162921459e-05 -7.019507274e-06 -7.109406884e-05" />
+              <joint name="left_knee_joint" type="hinge" axis="0 1 0" range="-0.05 2.05" damping="0" frictionloss="0" armature="0.0114" />
+              <body name="left_ankle_horn_link" pos="0 -0.052 -0.085" quat="1 0 0 0">
+                <inertial pos="-0.0221181367 -0.0006730649 -5.12893e-05" mass="0.01330791898" fullinertia="9.918809558e-07 6.43939868e-06 5.837873435e-06 4.952895482e-07 -1.122184283e-08 1.146933496e-09" />
+                <site name="left_ankle_pitch_linkage_input_pin" pos="-0.0449998793 0.0004 -0.0001042054" size="0.002" />
+                <joint name="left_ankle_motor_joint" type="hinge" axis="0 1 0" damping="0" frictionloss="0" armature="0.0024" />
+              </body>
+              <body name="left_foot_link" pos="0 -0.04 -0.205" quat="1 0 0 0">
+                <inertial pos="0.0107958231 -0.0001877618 -0.0185290634" mass="0.09550398233" fullinertia="3.070822055e-05 0.000191821722 0.0002078809775 -1.001909306e-06 1.130273195e-05 4.14908233e-07" />
+                <joint name="left_ankle_pitch_joint" type="hinge" axis="0 1 0" range="-1.2217 0.72" damping="0" frictionloss="0" armature="0" />
+                <body name="left_ankle_rod_link" pos="-0.0400000331 -0.0090995845 -7.07e-08" quat="1 0 0 0">
+                  <inertial pos="-0.0084255124 0 0.0597007891" mass="0.009590323635" fullinertia="1.405100482e-05 1.437181134e-05 3.607662029e-07 4.378391388e-22 5.719028832e-07 -1.138308014e-20" />
+                  <site name="left_ankle_pitch_linkage_coupler_pin" pos="-0.0049998463 -0.0025004155 0.1198958652" size="0.002" />
+                  <joint name="left_ankle_rod_joint" type="hinge" axis="0 1 0" damping="0" frictionloss="0" armature="0" />
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="right_hip_pitch_link" pos="0 -0.065 0" quat="1 0 0 0">
+        <inertial pos="0.0018937217 -0.0473529372 5.32462e-05" mass="0.8490266366" fullinertia="0.0007915689196 0.0006504026738 0.0006694420808 3.033262908e-07 3.137850256e-07 -5.367957068e-06" />
+        <joint name="right_hip_pitch_joint" type="hinge" axis="0 1 0" range="-1.8 0.8" damping="0" frictionloss="0" armature="0.0114" />
+        <body name="right_hip_roll_link" pos="0.0449 -0.048 0" quat="1 0 0 0">
+          <inertial pos="-0.0414365254 4.23695e-05 -0.0728711577" mass="0.7528417739" fullinertia="0.001009739225 0.001225423702 0.0007784876027 1.379508646e-07 -3.901161916e-05 -5.93892446e-07" />
+          <joint name="right_hip_roll_joint" type="hinge" axis="1 0 0" range="-0.8 0.1" damping="0" frictionloss="0" armature="0.0061" />
+          <body name="right_hip_yaw_link" pos="-0.043 0 -0.124" quat="1 0 0 0">
+            <inertial pos="-2.1941e-06 0.0047520751 -0.0578158598" mass="1.157357733" fullinertia="0.001123613212 0.001478412884 0.001091883612 -4.043228211e-08 1.597340746e-08 1.605245363e-06" />
+            <joint name="right_hip_yaw_joint" type="hinge" axis="0 0 1" range="-0.8 0.8" damping="0" frictionloss="0" armature="0.002" />
+            <body name="right_knee_link" pos="0 -0.0381 -0.058421" quat="1 0 0 0">
+              <inertial pos="0.0005727173 0.0342722965 -0.1043126241" mass="0.6531720518" fullinertia="0.001874944801 0.001533060832 0.0005914697573 -1.162924119e-05 -7.019507276e-06 7.109400737e-05" />
+              <joint name="right_knee_joint" type="hinge" axis="0 1 0" range="-0.05 2.05" damping="0" frictionloss="0" armature="0.0114" />
+              <body name="right_foot_link" pos="0 0.04 -0.205" quat="1 0 0 0">
+                <inertial pos="0.0107958231 0.0001885922 -0.0185290634" mass="0.09550398233" fullinertia="3.070822055e-05 0.000191821722 0.0002078809775 1.001909306e-06 1.130273195e-05 -4.14908233e-07" />
+                <joint name="right_ankle_pitch_joint" type="hinge" axis="0 1 0" range="-1.2217 0.72" damping="0" frictionloss="0" armature="0" />
+                <body name="right_ankle_rod_link" pos="-0.0400000331 0.0091004149 -7.07e-08" quat="1 0 0 0">
+                  <inertial pos="-0.0084255124 0 0.0597007891" mass="0.009590323635" fullinertia="1.405100482e-05 1.437181134e-05 3.607662029e-07 1.054411043e-21 5.719028832e-07 -3.68771154e-20" />
+                  <site name="right_ankle_pitch_linkage_coupler_pin" pos="-0.0049998463 0.0024995851 0.1198958652" size="0.002" />
+                  <joint name="right_ankle_rod_joint" type="hinge" axis="0 1 0" damping="0" frictionloss="0" armature="0" />
+                </body>
+              </body>
+              <body name="right_ankle_horn_link" pos="0 0.052 -0.085" quat="1 0 0 0">
+                <inertial pos="-0.0221181367 0.0007159367 -5.12893e-05" mass="0.01330791898" fullinertia="9.814618418e-07 6.43939868e-06 5.827454321e-06 -4.824875584e-07 -1.122184283e-08 -1.117288162e-09" />
+                <site name="right_ankle_pitch_linkage_input_pin" pos="-0.0449998793 -0.0004 -0.0001042054" size="0.002" />
+                <joint name="right_ankle_motor_joint" type="hinge" axis="0 1 0" damping="0" frictionloss="0" armature="0.0024" />
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="left_shoulder_pitch_link" pos="0.0026 0.089 0.22" quat="1 0 0 0">
+        <inertial pos="-0.0008365549 0.0383001375 -1.5e-09" mass="0.3666832602" fullinertia="0.0001737065169 0.0001837597364 0.0002032954347 5.266540288e-07 -3.652817803e-11 1.8215828e-12" />
+        <joint name="left_shoulder_pitch_joint" type="hinge" axis="0 1 0" range="-3 1.2" damping="0" frictionloss="0" armature="0.002" />
+        <body name="left_shoulder_roll_link" pos="-0.0305 0.04 0" quat="1 0 0 0">
+          <inertial pos="0.0297161517 0.1015895641 0.0006702085" mass="0.5158558438" fullinertia="0.001183116532 0.0003307102869 0.001242020873 2.444854184e-05 1.613490096e-07 -8.097705298e-06" />
+          <joint name="left_shoulder_roll_joint" type="hinge" axis="1 0 0" range="-1.3 1.5" damping="0" frictionloss="0" armature="0.0024" />
+          <body name="left_elbow_link" pos="0.02925 0.125 -0.0325" quat="1 0 0 0">
+            <inertial pos="-1.8634e-06 0.1148532021 0.0317499987" mass="0.4321686487" fullinertia="0.002239220085 0.0001941182729 0.00217611402 -4.537418745e-08 -5.034043532e-11 -1.087218693e-10" />
+            <joint name="left_elbow_joint" type="hinge" axis="0 0 -1" range="-0.1 2" damping="0" frictionloss="0" armature="0.0024" />
+          </body>
+        </body>
+      </body>
+      <body name="right_shoulder_pitch_link" pos="0.0026 -0.089 0.22" quat="1 0 0 0">
+        <inertial pos="-0.0008365566 -0.0382993073 -1e-09" mass="0.3666832791" fullinertia="0.00017370652 0.0001837597573 0.000203295456 -5.266555144e-07 -3.257084824e-11 -1.556456671e-12" />
+        <joint name="right_shoulder_pitch_joint" type="hinge" axis="0 1 0" range="-3 1.2" damping="0" frictionloss="0" armature="0.002" />
+        <body name="right_shoulder_roll_link" pos="-0.0305 -0.04 0" quat="1 0 0 0">
+          <inertial pos="0.0297161552 -0.1015887351 0.0006702103" mass="0.515855767" fullinertia="0.00118311647 0.0003307102199 0.001242020814 -2.44485058e-05 1.613045958e-07 8.09768472e-06" />
+          <joint name="right_shoulder_roll_joint" type="hinge" axis="1 0 0" range="-1.5 1.3" damping="0" frictionloss="0" armature="0.0024" />
+          <body name="right_elbow_link" pos="0.02925 -0.125 -0.0325" quat="1 0 0 0">
+            <inertial pos="-1.8634e-06 -0.1148523718 0.0317500047" mass="0.4321686487" fullinertia="0.002239220085 0.0001941182729 0.00217611402 4.537419339e-08 5.033621096e-11 -1.133307038e-10" />
+            <joint name="right_elbow_joint" type="hinge" axis="0 0 1" range="-0.1 2" damping="0" frictionloss="0" armature="0.0024" />
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
