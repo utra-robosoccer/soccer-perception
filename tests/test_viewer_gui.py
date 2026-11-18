@@ -30,7 +30,8 @@ from PySide6 import QtCore, QtWidgets  # noqa: E402
 from robosoccer_perception.viewer.app import MainWindow, apply_dark_theme, wait_until  # noqa: E402
 from robosoccer_perception.viewer.recording import Recording  # noqa: E402
 from robosoccer_perception.viewer.render import mosaic  # noqa: E402
-from robosoccer_perception.vision_benchmark import runner  # noqa: E402
+from robosoccer_perception.humanoid_benchmark import scenarios as humanoid_scenarios  # noqa: E402
+from robosoccer_perception.vision_benchmark import runner, scenarios  # noqa: E402
 
 pytestmark = [pytest.mark.render, pytest.mark.slow]
 
@@ -293,7 +294,12 @@ def test_benchmark_scenarios_can_be_selected(window, scenario, ambiguous):
     frames = [win.frame_at(i) for i in range(12)]
     assert all(np.isfinite(f.pose).all() for f in frames)
     assert any(f.ambiguous for f in frames) == ambiguous
-    assert win.scenario_box.count() == 16
+    # Every Phase 3 scenario is still offered; since Phase 4 the list also holds the
+    # moving-body scenarios (tests/test_viewer_humanoid.py), which is why it is longer than 16.
+    offered = [win.scenario_box.itemData(i) for i in range(win.scenario_box.count())]
+    phase3 = [name for name in offered if name.startswith("v")]
+    assert len(phase3) == 16 and set(phase3) == set(scenarios.SCENARIOS)
+    assert len(offered) == 16 + len(humanoid_scenarios.SCENARIOS)
 
 
 def test_changing_the_seed_restarts_with_another_run(window):
