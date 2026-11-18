@@ -123,6 +123,44 @@ thread keeps the simulation and the networks away from the window. It adds no es
 code: the particle filter, the models, the extraction and the benchmark are untouched, and a
 session reproduces the benchmark's vision arm bit for bit.
 
+## Phase 4: the humanoid, a moving camera and the IMU
+
+Phase 4 changes what is *in front of* the Phase 3 pipeline and leaves the pipeline's interface
+alone. Details: [humanoid_integration.md](humanoid_integration.md),
+[camera_mount.md](camera_mount.md), [humanoid_fusion.md](humanoid_fusion.md),
+[phase4_validation.md](phase4_validation.md).
+
+| Package | Contents | Needs |
+|---|---|---|
+| `geometry/` | `quaternion.py`, `mount.py` (`BodyGeometry`, `CameraMount`, the footprint-body-rig chain), `robot_description.py` | NumPy |
+| `estimation/` | `imu_types.py`, `orientation.py` (tilt filter), `sync.py` (camera / IMU timestamps), `camera_pose.py` (per-image `EstimatedCameraPose`), `calibration_monitor.py` | NumPy |
+| `simulation/` | `body_motion.py` (synthetic 6-DOF motion), `imu.py` (simulated IMU) | NumPy |
+| `simulation/` | `humanoid.py` (import, posing and attaching `humanoid_prototype_1`) | MuJoCo |
+| `humanoid_benchmark/` | `scenarios.py`, `runner.py` (`HumanoidSimulation`, `ArmEstimator`), `benchmark.py`, `setup.py` | MuJoCo, the models |
+| `viewer/` | `humanoid_session.py`, `catalog.py` | as the viewer |
+
+Two classes hold the line between simulator and robot. `HumanoidSimulation` produces, per
+frame, a `SensorPacket` (image, timestamp, odometry increment, the IMU samples that have
+arrived) and separately a `StepTruth`. `ArmEstimator` receives sensor packets and nothing else:
+it feeds the IMU samples to a `CameraPoseEstimator`, asks it for the camera pose at the image's
+timestamp and calls `VisionLocalizationPipeline.step` with it. The benchmark runs several
+`ArmEstimator`s on the same packets; the viewer runs one.
+
+`estimation/` is runtime code: it imports neither MuJoCo nor anything from `simulation/`, and
+it is covered by the same import and replay tests as the Phase 3 pipeline.
+
+The existing code was touched in four places, each of them off by default:
+
+| Where | Change | Default |
+|---|---|---|
+| `simulation/mujoco_scene.py` | `MujocoScene(robot=, mount=)` attaches a robot body, markers and a chase camera; `set_body` poses it | no robot: the Phase 1 to 3 scene |
+| `vision_benchmark/sim_camera.py` | `capture(..., body=)` poses the body before rendering | no body |
+| `perception/` (`uncertainty.py`, `extractor.py`, `goal_features.py`, `config.py`) | the camera error can be priced as shared by a frame | `shared_camera_error: false`: bit for bit Phase 3 |
+| `viewer/` | sessions for both phases behind one worker; optional `fusion` and `robot_view` in a frame | Phase 3 sessions and recordings unchanged |
+
+The particle filter, the networks, the observation types and
+`VisionLocalizationPipeline.step` were not modified.
+
 ## Design rules
 
 1. **One field description.** `FieldGeometry` is built from a YAML file and nothing else holds
@@ -156,8 +194,13 @@ from them is convention only:
 
 The Unitree G1 model was **not** copied. soccer-software's G1 description has no camera, its
 meshes are about 38 MB of binary STL files, and a legged model adds nothing while the camera is
-moved kinematically. The platform is a mocap body with a placeholder shape; see
-`simulation/mujoco_scene.py` for where a humanoid model would attach.
+moved kinematically. The default platform is a mocap body with a placeholder shape.
+
+Since Phase 4 one asset **is** taken from soccer-software: the visual meshes and the kinematic
+tree of `humanoid_prototype_1`, imported into `assets/robots/humanoid_prototype_1/` (1.9 MB)
+by `scripts/import_humanoid_model.py` with the source commit and file hashes recorded
+([humanoid_integration.md](humanoid_integration.md)). The import reads the other repository
+and never writes to it; at run time nothing outside this repository is needed.
 
 ## Extension points
 
@@ -166,9 +209,14 @@ moved kinematically. The platform is a mocap body with a placeholder shape; see
 | A field size | a new `configs/fields/*.yaml` |
 | The calibrated ZED Mini | a new `configs/cameras/*.yaml` (and a distortion model in `geometry/camera.py`) |
 | Another image feature (penalty marks, stereo range) | a module in `perception/`, a field in `FeatureSet`, a line in `build_observation_frame` |
-| The measured camera mount | `configs/cameras/*.yaml` and the beliefs in `configs/perception/measurement_noise.yaml` |
+| The measured camera mount | a new `configs/mounts/*.yaml` with `experimental: false` ([camera_mount.md](camera_mount.md)), and the beliefs in `configs/perception/measurement_noise.yaml` |
+| Another virtual head height | a new five-line `configs/mounts/*.yaml` |
+| Head (neck) joints | compose `T_body_neck @ T_neck_rig(angles)` where `CameraPoseEstimator._pose` composes the mount today |
+| A body motion | a new `configs/motion/*.yaml`; measured motion: a new source of body poses behind `BodyMotion.sample` |
+| The real IMU | feed `ImuSample`s to `CameraPoseEstimator.add_imu`; put its noise figures in `TiltFilterConfig` |
+| An updated robot model | re-run `scripts/import_humanoid_model.py` |
 | Another detector or segmenter | a class with `predict(image_rgb)` returning `Detection`s or a `Segmentation` |
 | A dataset variant | a new `configs/datasets/*.yaml` or `configs/randomization/*.yaml` |
 | Real odometry | produce `OdometryDelta`s from the walking engine / IMU |
-| A humanoid model | replace the placeholder geoms of the `base` body in `build_spec`; for other robots, `scene_objects.add_humanoid` |
-| A ROS 2 node | wrap `VisionLocalizationPipeline.step`; take `T_base_camera` from TF; publish `map -> odom` from `PoseEstimate` |
+| Another robot body | a `configs/robots/*.yaml` and an import like `simulation/humanoid.py`; for the *other* robots on the field, `scene_objects.add_humanoid` |
+| A ROS 2 node | wrap `ArmEstimator` (or `CameraPoseEstimator` + `VisionLocalizationPipeline.step`): IMU messages to `add_imu`, the image's header stamp to `estimate`, the mount from TF or `configs/mounts/`; publish `map -> odom` from `PoseEstimate` |

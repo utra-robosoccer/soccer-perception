@@ -2,7 +2,7 @@
 
 Perception and localization research for the UTRA RoboSoccer humanoid.
 
-The repository was built in three phases:
+The repository was built in four phases:
 
 - **Phase 1, localization on oracle observations.** Lets the team develop and **measure**
   localization before any neural perception model exists and before the robot can walk.
@@ -13,7 +13,13 @@ The repository was built in three phases:
   networks' predictions on rendered camera images, turned into the observations the particle
   filter already consumes, and the result is benchmarked against the oracle on identical runs.
 
-All three are **simulation only**. No real camera image has been used anywhere.
+- **Phase 4, the humanoid and a moving camera.** Puts UTRA's actual `humanoid_prototype_1`
+  body under a configurable virtual camera mount, moves it the way a standing, swaying, walking
+  or pushed humanoid moves, simulates an IMU on it, and estimates the camera's orientation for
+  every image so that the Phase 3 pipeline keeps working when the torso does not hold still.
+
+All four are **simulation only**. No real camera image, no measured robot motion and no real
+IMU data has been used anywhere.
 
 Phase 1 contains:
 
@@ -48,11 +54,34 @@ Phase 3 adds:
   appearance shift, field symmetry and kidnapping scenarios, and a calibration sensitivity
   sweep.
 
-It is a standalone Python package (`robosoccer_perception`). It does not use ROS and does not
-depend on `robosoccer-rl` or `soccer-software` at run time.
+Phase 4 adds:
 
-Not here: the ZED SDK, ROS 2 nodes or messages, SLAM, humanoid dynamics or locomotion, stereo
-depth, and any validation on real camera footage.
+- UTRA's `humanoid_prototype_1`, imported from `soccer-software` as a kinematic, visual-only
+  body (every link mesh, the joint tree, the IMU site), with the placeholder platform kept as a
+  fallback;
+- a **configurable virtual camera mount**: the head is not designed, so the camera's place on
+  the body is a preset file, its height is derived from the body's geometry, and every preset
+  is marked experimental;
+- synthetic body motion (standing, sway, walking-like, turning, abrupt disturbances) and a
+  simulated IMU derived from that motion, with bias, drift, noise, latency, lost samples and
+  clock offsets;
+- a lightweight roll / pitch filter with an uncertainty, interpolation of orientation to each
+  image's timestamp, and a per-image camera pose for the unchanged Phase 3 pipeline;
+- uncertainty-aware projection that treats a camera-orientation error as shared by the whole
+  frame, and a monitor that finds a persistent mount pitch / roll bias in the field lines and
+  applies a bounded correction;
+- a benchmark of fixed-camera, oracle-orientation, IMU and uncertainty-aware localization on
+  identical images, with calibration and timing sweeps;
+- the viewer extended to show the humanoid, the mount and the estimated against the true
+  camera orientation.
+
+It is a standalone Python package (`robosoccer_perception`). It does not use ROS and does not
+depend on `robosoccer-rl` or `soccer-software` at run time: the humanoid's meshes are imported
+once into `assets/`.
+
+Not here: the ZED SDK, ROS 2 nodes or messages, SLAM, humanoid dynamics or locomotion (the
+humanoid is posed, not simulated, and its stepping is an animation), a head design, stereo
+depth, and any validation on real camera footage or real IMU data.
 
 ## Setup
 
@@ -84,6 +113,17 @@ package `libxcb-cursor0`; see [docs/viewer.md](docs/viewer.md).
 sudo apt install libxcb-cursor0
 ```
 
+**The humanoid model** used by Phase 4 is already in the repository
+(`assets/robots/humanoid_prototype_1/`, 1.9 MB, imported from soccer-software commit
+`bb4a3bb`). Nothing has to be done to use it. To refresh it after the official model changes:
+
+```bash
+.venv/bin/python scripts/import_humanoid_model.py \
+    --source <soccer-software>/src/humanoid_description/robots/humanoid_prototype_1
+```
+
+The source is only read. See [docs/humanoid_integration.md](docs/humanoid_integration.md).
+
 Phase 1 does not need it, and its tests run without it (the vision tests are skipped).
 Ultralytics and the YOLO weights are AGPL-3.0; see
 [docs/object_detection.md](docs/object_detection.md#licensing).
@@ -103,7 +143,7 @@ by Git.
 ### Tests
 
 ```bash
-.venv/bin/python -m pytest                    # everything, about 3 minutes
+.venv/bin/python -m pytest                    # everything: 585 tests, about 5.5 minutes
 .venv/bin/python -m pytest -m "not slow"      # skips full localization runs and training smoke tests
 .venv/bin/python -m pytest -m "not vision"    # everything that needs no PyTorch
 ```
@@ -113,7 +153,9 @@ tests that need PyTorch or Ultralytics when the `vision` extra is not installed.
 the network or needs downloaded weights. The Phase 3 tests that run the **trained** models
 (`tests/test_vision_localization_models.py`) are skipped until the checkpoints exist; all
 other Phase 3 tests use analytically painted views or a colour-threshold stand-in. The
-viewer's window tests run without a screen and are skipped when PySide6 is not installed.
+viewer's window tests run without a screen and are skipped when PySide6 is not installed. The
+Phase 4 tests that need the humanoid are skipped if `assets/robots/humanoid_prototype_1/` is
+missing; the mount, body-motion, IMU and orientation tests need neither MuJoCo nor a display.
 
 ### Render the field and a stereo pair
 
@@ -259,23 +301,62 @@ Settings are in `configs/evaluation/vision_localization.yaml` (models, image siz
 sweep values) and `configs/perception/` (extraction and measurement-noise parameters).
 Results and their limits are in [docs/phase3_validation.md](docs/phase3_validation.md).
 
+### The humanoid, a moving camera and the IMU (Phase 4)
+
+```bash
+# Pictures of the robot on the field with each virtual camera mount, and what its camera sees
+.venv/bin/python scripts/render_humanoid.py
+.venv/bin/python scripts/render_humanoid.py head_mid --pitch 6 --roll -3     # a tilted body
+
+# The benchmark: 18 scenarios x 3 seeds x 6 arms, then the calibration and timing sweeps
+# (about 75 min on the RTX 2050 laptop; run it alone, its latency numbers are a result)
+.venv/bin/python scripts/benchmark_humanoid_fusion.py
+.venv/bin/python scripts/benchmark_humanoid_fusion.py h05 h10 --seeds 1 --no-sweeps   # a quick look
+```
+
+Every arm localizes from the same rendered images, IMU samples and odometry and differs only in
+its camera-pose estimate: `fixed` (Phase 3: a level body in every frame),
+`oracle_orientation` (the true camera orientation; an upper bound that uses ground truth),
+`imu`, `imu_uncertainty`, `imu_latest` (no timestamp interpolation) and `imu_selfcal` (with the
+mount-bias correction).
+
+| Output | Where |
+|---|---|
+| Benchmark | `outputs/humanoid_fusion/benchmark/` (`summary.md`, `results.json`, `summary.csv`, `plots/overview.png`, `plots/camera_height.png`, `plots/run_<scenario>.png`) |
+| Sweeps | `outputs/humanoid_fusion/sweeps/` (`calibration_sweep.json`, `calibration_sweep.csv`, `calibration_sensitivity.png`, `timing_sweep.json`, `timing_sensitivity.png`) |
+| Mount pictures | `outputs/humanoid/` (`mount_<robot>_<preset>.png`, `mounts_<robot>.png`, `mounts_<robot>.json`) |
+
+Settings: `configs/evaluation/humanoid_fusion.yaml`, `configs/mounts/`, `configs/motion/`,
+`configs/imu/`, `configs/robots/`. What was integrated:
+[docs/humanoid_integration.md](docs/humanoid_integration.md). The mount and what changes when
+the head exists: [docs/camera_mount.md](docs/camera_mount.md). Methods:
+[docs/humanoid_fusion.md](docs/humanoid_fusion.md). Results and limits:
+[docs/phase4_validation.md](docs/phase4_validation.md).
+
 ### Watch the pipeline work (interactive viewer)
 
 One window with four synchronized panels: the camera image with the detector's boxes, the
 segmentation with the extracted features, the field from above with the particle cloud, the
 estimate and the true pose, and plots of error, confidence and latency. It runs any benchmark
 scenario live, pauses, steps, scrubs back through what it has shown, and replays recordings.
+For the Phase 4 scenarios it shows the humanoid itself in a third-person inset, and the
+estimated against the true camera orientation.
 
 ```bash
-.venv/bin/python scripts/visualize_pipeline.py                      # v04_rectangle, paused
-.venv/bin/python scripts/visualize_pipeline.py v13a --autoplay      # any scenario, by prefix
+.venv/bin/python scripts/visualize_pipeline.py                      # the humanoid walking a rectangle
+.venv/bin/python scripts/visualize_pipeline.py h02 --fusion fixed   # sway, with the Phase 3 camera model
+.venv/bin/python scripts/visualize_pipeline.py h10 --fusion imu_selfcal --autoplay
+.venv/bin/python scripts/visualize_pipeline.py h05 --robot placeholder --mount legacy_rig
+.venv/bin/python scripts/visualize_pipeline.py v13a --autoplay      # a Phase 3 scenario, by prefix
 .venv/bin/python scripts/visualize_pipeline.py --replay outputs/viewer/recordings/<file>.npz
-.venv/bin/python scripts/visualize_pipeline.py v04 --headless --record --video   # no window
+.venv/bin/python scripts/visualize_pipeline.py h05 --headless --record --video   # no window
 ```
 
-Keys: Space run / pause, Right / Left step, R reset, S screenshot, G ground truth. Recordings,
-videos and screenshots go to `outputs/viewer/`. Ground truth is displayed, never given to the
-estimator. Controls, panels and limits: [docs/viewer.md](docs/viewer.md).
+Keys: Space run / pause, Right / Left step, R reset, S screenshot, G ground truth. The second
+control bar selects the robot body, the camera mount preset, the body motion and the
+camera-pose estimator. Recordings, videos and screenshots go to `outputs/viewer/`. Ground truth
+is displayed, never given to the estimator. Controls, panels and limits:
+[docs/viewer.md](docs/viewer.md).
 
 ### Use it from Python
 
@@ -346,11 +427,26 @@ configs/
   perception/feature_extraction.yaml           geometric extraction parameters  (Phase 3)
   perception/measurement_noise.yaml            uncertainty model, calibration beliefs (Phase 3)
   evaluation/vision_localization.yaml          benchmark settings and sweep     (Phase 3)
+  robots/{humanoid_prototype_1,placeholder}.yaml   the body that carries the camera   (Phase 4)
+  mounts/{head_low,head_mid,head_high,head_tall,legacy_rig}.yaml   virtual camera mounts,
+                                               all experimental                  (Phase 4)
+  motion/*.yaml                                synthetic body motion profiles    (Phase 4)
+  imu/{nominal,ideal,dropouts}.yaml            simulated IMU                     (Phase 4)
+  evaluation/humanoid_fusion.yaml              Phase 4 benchmark and sweeps      (Phase 4)
+assets/
+  robots/humanoid_prototype_1/      imported model: skeleton, visual meshes, measured body
+                                    geometry, manifest with source commit and hashes
 src/robosoccer_perception/
   geometry/        field.py  landmarks.py  distance_map.py  transforms.py  camera.py
                    ground_projection.py (pixel -> ground, camera estimates, covariance)
+                   quaternion.py  mount.py (body geometry, camera mount)  robot_description.py
   simulation/      mujoco_scene.py  stereo_camera.py  trajectories.py  ground_truth.py  odometry.py
                    scene_objects.py (robots, ball looks, backdrop)
+                   humanoid.py (import and posing of humanoid_prototype_1)
+                   body_motion.py (synthetic 6-DOF body motion)  imu.py (simulated IMU)
+  estimation/      imu_types.py  orientation.py (tilt filter)  sync.py (camera / IMU time)
+                   camera_pose.py (per-image camera pose)  calibration_monitor.py
+                   (no simulator: this is robot-side code)
   observations/    types.py  oracle.py  noise.py
   localization/    particle_filter.py  motion_model.py  measurement_model.py  estimation.py
   evaluation/      scenarios.py  metrics.py  benchmark.py
@@ -365,17 +461,22 @@ src/robosoccer_perception/
   pipeline/        vision_localization.py (image + odometry -> pose; no simulator)
   vision_benchmark/  camera_truth.py  sim_camera.py  scenarios.py  corruption.py  runner.py
                    feature_metrics.py  feature_evaluation.py  benchmark.py  setup.py
+  humanoid_benchmark/  scenarios.py  runner.py (simulation side, robot side, arms)
+                   benchmark.py (aggregation, calibration and timing sweeps)  setup.py
   visualization/   field_plot.py  diagnostics.py  camera_overlay.py  style.py
                    vision_overlay.py  vision_plots.py  vision_localization_plots.py
+                   humanoid_plots.py
   viewer/          session.py  frame.py  recording.py  render.py  worker.py  headless.py
                    app.py  qt_env.py   (the interactive debugging viewer)
+                   humanoid_session.py  catalog.py   (Phase 4 scenarios in the viewer)
 scripts/           render_field.py  run_localization.py  benchmark.py
                    generate_dataset.py  inspect_dataset.py  train_detector.py  evaluate_detector.py
                    train_segmentation.py  evaluate_segmentation.py  run_vision.py  export_models.py
                    run_vision_localization.py  benchmark_vision_localization.py
                    evaluate_features.py  visualize_pipeline.py
-tests/             one file per area; see docs/validation.md, docs/vision_validation.md and
-                   docs/phase3_validation.md
+                   import_humanoid_model.py  render_humanoid.py  benchmark_humanoid_fusion.py
+tests/             one file per area; see docs/validation.md, docs/vision_validation.md,
+                   docs/phase3_validation.md and docs/phase4_validation.md
 docs/              the documents below
 ```
 
@@ -398,6 +499,10 @@ docs/              the documents below
 | [docs/vision_localization.md](docs/vision_localization.md) | Phase 3: the camera-to-pose pipeline, the ground-truth boundary, benchmark arms and scenarios |
 | [docs/phase3_validation.md](docs/phase3_validation.md) | Phase 3: oracle versus vision versus odometry, calibration sensitivity, latency, failures, limits |
 | [docs/viewer.md](docs/viewer.md) | the interactive viewer: install, controls, what each panel shows, recordings, limits |
+| [docs/humanoid_integration.md](docs/humanoid_integration.md) | Phase 4: the audit of `humanoid_prototype_1`, what was imported and what was left out, how the body is posed |
+| [docs/camera_mount.md](docs/camera_mount.md) | Phase 4: the virtual head and the configurable camera mount, every assumption, what to change when the real head exists |
+| [docs/humanoid_fusion.md](docs/humanoid_fusion.md) | Phase 4: body motion, the simulated IMU, the tilt filter, camera / IMU synchronisation, uncertainty-aware projection, the mount monitor |
+| [docs/phase4_validation.md](docs/phase4_validation.md) | Phase 4: fixed against IMU-assisted localization, calibration and timing sensitivity, failures, limits, next steps |
 
 ## Things to know before trusting a number
 
@@ -416,8 +521,27 @@ docs/              the documents below
   estimate the vision arm matches the oracle (2 to 4 cm, about 0.5 deg, 23 frames per second
   at 640x360). Every image was rendered by this repository and the camera is an ideal pinhole
   on a platform that does not walk.
-- **Camera calibration decides the accuracy.** A hidden 2 deg pitch error costs 34 cm and the
-  filter still reports itself converged; 5 cm of height costs 12 cm. The pipeline is told the
-  nominal camera mount and cannot discover the true one.
+- **Camera calibration decides the accuracy.** On Phase 3's rigid platform a hidden 2 deg
+  pitch error costs 34 cm and the filter still reports itself converged; 5 cm of height costs
+  12 cm. Phase 4 is about exactly this weakness: see the last bullets.
 - **A robot carried across the centre line re-localizes on the mirrored pose**, from images
   and from oracle observations alike. Only outside information can prevent it.
+- **The humanoid in the simulator is a posed picture of the robot, not the robot.** It is
+  `humanoid_prototype_1`'s real geometry and joint tree, but nothing is simulated: it cannot
+  balance or fall, and the stepping is an animation that has no effect on the camera.
+- **The robot has no head, so every camera position is an assumption.** The mount presets in
+  `configs/mounts/` are experimental. The camera height is derived from the torso's measured
+  top (0.679 m) plus a preset's offset; between 0.74 and 0.90 m the height made no measurable
+  difference to localization in the simulator.
+- **A fixed camera model does not survive a moving torso.** With synthetic walking motion
+  (a 2 degree lean, 1 to 2 degrees of oscillation) Phase 3's pipeline averages about 1 m of
+  position error and reports itself converged while lost. With the simulated IMU's roll and
+  pitch it is at 6 to 16 cm, and with uncertainty-aware projection on top at 3 to 8 cm
+  (the true-orientation upper bound is 2 to 4 cm), at 21.6 frames per second.
+- **Those IMU results come from a simulated IMU on synthetic motion.** The filter was tuned on
+  the same family of motion it was tested on. No real IMU sample and no measured gait has been
+  used.
+- **An IMU cannot see a wrong camera mount.** A 2 degree mount pitch error still costs 58 cm
+  with the IMU alone. Uncertainty-aware projection brings that to 11 cm, and the mount monitor,
+  which reads the error from the field lines, to 7 cm. The monitor cannot tell a pitch error
+  from a height error.
