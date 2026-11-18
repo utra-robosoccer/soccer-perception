@@ -17,7 +17,7 @@ import numpy as np
 from robosoccer_perception.viewer import recording as recording_module
 from robosoccer_perception.viewer.frame import Timeline, ViewerFrame, pack
 from robosoccer_perception.viewer.render import Layers, PanelRenderer, mosaic
-from robosoccer_perception.viewer.session import LiveSession
+from robosoccer_perception.viewer import catalog
 
 
 def save_png(path, image_rgb: np.ndarray) -> Path:
@@ -121,7 +121,8 @@ def run_headless(resources, scenario, seed: int = 0, *, max_steps: int | None = 
                  record=None, video=None, screenshots: int = 0, screenshot_dir=None,
                  layers: Layers | None = None, with_truth: bool = True,
                  max_particles: int = 600, video_speed: float = 1.0,
-                 progress: Callable[[int, int], None] | None = None) -> dict[str, Any]:
+                 progress: Callable[[int, int], None] | None = None,
+                 options=None) -> dict[str, Any]:
     """Run one scenario to its end without a window.
 
     Optionally writes a recording (``record``), a video (``video``) and ``screenshots``
@@ -130,8 +131,9 @@ def run_headless(resources, scenario, seed: int = 0, *, max_steps: int | None = 
     layers = layers or Layers()
     packed: list[Mapping[str, np.ndarray]] = []
     written: dict[str, Any] = {"screenshots": []}
-    with LiveSession(scenario, seed, resources, max_particles=max_particles,
-                     with_truth=with_truth, max_steps=max_steps) as session:
+    with catalog.open_session(scenario, seed, resources, options=options,
+                              max_particles=max_particles, with_truth=with_truth,
+                              max_steps=max_steps) as session:
         meta = session.meta()
         timeline = Timeline(session.total_steps, session.dt)
         renderer = PanelRenderer(session.field, meta)
@@ -179,4 +181,9 @@ def run_headless(resources, scenario, seed: int = 0, *, max_steps: int | None = 
     if with_truth:
         summary["position_rmse_m"] = float(np.sqrt(np.nanmean(v["position_error"][done] ** 2)))
         summary["yaw_rmse_deg"] = float(np.sqrt(np.nanmean(v["yaw_error_deg"][done] ** 2)))
+        if meta.get("phase4"):
+            pitch_error = v["est_camera_pitch"][done] - v["true_camera_pitch"][done]
+            summary["camera_pitch_rmse_deg"] = float(np.sqrt(np.nanmean(pitch_error ** 2)))
+    if meta.get("phase4"):
+        summary.update({key: meta[key] for key in ("robot", "mount", "motion", "fusion")})
     return {**summary, **written}

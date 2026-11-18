@@ -6,6 +6,7 @@
     | localization map     | diagnostics          |           |
     +----------------------+----------------------+-----------+
     | scenario  seed  run / pause  step  reset  speed   slider   screenshot  record  video |
+    | robot  camera mount  body motion  camera pose          (Phase 4 scenarios, "h...")   |
 
 How it stays consistent and responsive:
 
@@ -40,8 +41,13 @@ from robosoccer_perception.viewer.frame import Timeline, ViewerFrame, unpack
 from robosoccer_perception.viewer.recording import Recording
 from robosoccer_perception.viewer.render import (
     PANEL_SIZE, TITLE_BAR, Layers, PanelRenderer, mosaic)
+from robosoccer_perception.geometry.mount import available_mounts
+from robosoccer_perception.geometry.robot_description import available_robots
+from robosoccer_perception.simulation.body_motion import available_profiles
+from robosoccer_perception.viewer import catalog
+from robosoccer_perception.viewer.humanoid_session import (
+    DEFAULT_FUSION, FUSION_LABELS, SessionOptions)
 from robosoccer_perception.viewer.worker import SimulationWorker
-from robosoccer_perception.vision_benchmark.scenarios import select_scenarios
 
 SPEEDS = (("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0),
           ("max", math.inf))
@@ -90,11 +96,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, resources_factory: Callable[[], Any], *, scenario: str = "v04_rectangle",
                  seed: int = 0, speed: float = 1.0, max_particles: int = 600,
                  max_steps: int | None = None, show_truth: bool = True,
-                 autoplay: bool = False, replay: str | None = None):
+                 autoplay: bool = False, replay: str | None = None,
+                 options: SessionOptions | None = None):
         super().__init__()
         self.setWindowTitle("RoboSoccer vision-localization viewer")
         self.layers = Layers(ground_truth=show_truth)
-        self.scenarios = select_scenarios(None)
+        self.scenarios = catalog.all_scenarios()
+        self._initial_options = options or SessionOptions()
         self._autoplay = autoplay
 
         # ---- what is being shown
@@ -204,6 +212,44 @@ class MainWindow(QtWidgets.QMainWindow):
             top.addWidget(widget)
         top.addStretch(1)
         outer.addLayout(top)
+
+        # ---- second bar: the body, its camera mount, its motion and the camera-pose
+        # estimator. These apply to the Phase 4 scenarios; "scenario" keeps a scenario's own.
+        body = QtWidgets.QHBoxLayout()
+        initial = self._initial_options
+
+        def choice(tip: str, entries, current) -> QtWidgets.QComboBox:
+            box = QtWidgets.QComboBox()
+            box.setToolTip(tip)
+            for label, value in entries:
+                box.addItem(label, value)
+            box.setCurrentIndex(max(box.findData(current), 0))
+            box.activated.connect(lambda _=None: self.load_scenario())
+            return box
+
+        keep = [("as the scenario", None)]
+        self.robot_box = choice(
+            "The body that carries the camera: UTRA's humanoid_prototype_1 or the placeholder "
+            "rig of Phases 1 to 3", keep + [(name, name) for name in available_robots()],
+            initial.robot)
+        self.mount_box = choice(
+            "Virtual camera mount preset. Every preset is an experimental assumption: the "
+            "robot's head is not designed", keep + [(name, name) for name in available_mounts()],
+            initial.mount)
+        self.motion_box = choice(
+            "Synthetic body motion: standing, sway, walking-like, disturbances",
+            keep + [(name, name) for name in available_profiles()], initial.motion)
+        self.fusion_box = choice(
+            "How the robot estimates its camera pose. 'Fixed' ignores the IMU, as Phase 3 did",
+            [(label, name) for name, label in FUSION_LABELS.items()], initial.fusion)
+        self.phase4_widgets = [QtWidgets.QLabel("Robot"), self.robot_box,
+                               QtWidgets.QLabel("Camera mount"), self.mount_box,
+                               QtWidgets.QLabel("Body motion"), self.motion_box,
+                               QtWidgets.QLabel("Camera pose"), self.fusion_box]
+        for widget in self.phase4_widgets:
+            body.addWidget(widget)
+        body.addStretch(1)
+        outer.addLayout(body)
 
         # ---- the four panels and the overlay toggles
         middle = QtWidgets.QHBoxLayout()
@@ -350,8 +396,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.history.clear()
         self.cursor, self._latest, self._cache = -1, None, None
         self.finished = False
-        self.run_id = self.worker.load(self.scenario_box.currentData(), self.seed_box.value())
+        self.run_id = self.worker.load(self.scenario_box.currentData(), self.seed_box.value(),
+                                       self.session_options())
         self._update_controls()
+
+    def session_options(self) -> SessionOptions:
+        """The Phase 4 controls as they are set now."""
+        return SessionOptions(robot=self.robot_box.currentData(),
+                              mount=self.mount_box.currentData(),
+                              motion=self.motion_box.currentData(),
+                              fusion=self.fusion_box.currentData() or DEFAULT_FUSION,
+                              robot_view=self._initial_options.robot_view)
+
+    def _is_phase4_selected(self) -> bool:
+        return catalog.is_phase4(catalog.find_scenario(self.scenario_box.currentData()))
 
     def reset(self) -> None:
         """Back to the first frame. A live run is simulated again from the start."""
@@ -527,6 +585,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_controls(self) -> None:
         self.run_button.setText("Pause" if self.playing else "Run")
         self.live_button.setVisible(self.source == "recording")
+        phase4 = self.source == "live" and self._is_phase4_selected()
+        for widget in self.phase4_widgets:
+            widget.setEnabled(phase4)
         self._dirty = True
 
     # ------------------------------------------------------------------ output

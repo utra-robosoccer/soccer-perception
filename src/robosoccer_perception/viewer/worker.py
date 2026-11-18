@@ -27,8 +27,8 @@ import traceback
 from typing import Any, Callable
 
 from robosoccer_perception.viewer.frame import ViewerFrame, pack
+from robosoccer_perception.viewer import catalog
 from robosoccer_perception.viewer.session import LiveSession
-from robosoccer_perception.vision_benchmark.scenarios import get_scenario
 
 FrameCallback = Callable[[int, ViewerFrame, dict], None]
 EventCallback = Callable[[str, Any], None]
@@ -60,10 +60,11 @@ class SimulationWorker(threading.Thread):
             self._run_counter += 1
             return self._run_counter
 
-    def load(self, scenario_id: str, seed: int) -> int:
-        """Start a scenario from its first frame (paused). Returns the new run id."""
+    def load(self, scenario_id: str, seed: int, options=None) -> int:
+        """Start a scenario from its first frame (paused). Returns the new run id.
+        ``options`` (a `humanoid_session.SessionOptions`) applies to Phase 4 scenarios."""
         run_id = self._new_run()
-        self._commands.put(("load", run_id, scenario_id, int(seed)))
+        self._commands.put(("load", run_id, scenario_id, int(seed), options))
         return run_id
 
     def reset(self) -> int:
@@ -127,7 +128,7 @@ class SimulationWorker(threading.Thread):
         kind = command[0]
         try:
             if kind == "load":
-                _, run_id, scenario_id, seed = command
+                _, run_id, scenario_id, seed, options = command
                 self._set_running(False)
                 if self._resources is None:
                     self._on_event("status", "loading the vision models ...")
@@ -136,9 +137,9 @@ class SimulationWorker(threading.Thread):
                 if self._session is not None:
                     self._session.close()
                     self._session = None
-                self._session = LiveSession(get_scenario(scenario_id), seed, self._resources,
-                                            max_particles=self._max_particles,
-                                            max_steps=self._max_steps)
+                self._session = catalog.open_session(
+                    catalog.find_scenario(scenario_id), seed, self._resources, options=options,
+                    max_particles=self._max_particles, max_steps=self._max_steps)
                 self._begin(run_id)
             elif kind == "reset":
                 self._set_running(False)

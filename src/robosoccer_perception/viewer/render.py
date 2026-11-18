@@ -72,6 +72,7 @@ class Layers:
     """Which overlays are drawn. Every field is one checkbox in the window."""
     boxes: bool = True
     labels: bool = True
+    robot_view: bool = True
     field_mask: bool = True
     line_mask: bool = True
     line_points: bool = True
@@ -89,6 +90,7 @@ class Layers:
     CATALOGUE = (
         ("boxes", "Camera", "Detection boxes"),
         ("labels", "Camera", "Labels and scores"),
+        ("robot_view", "Camera", "Robot view (3rd person)"),
         ("field_mask", "Segmentation", "Field mask"),
         ("line_mask", "Segmentation", "Line mask"),
         ("line_points", "Segmentation", "Line points"),
@@ -259,11 +261,28 @@ class PanelRenderer:
                 if layers.labels:
                     caption = f"{detection.class_name} {detection.confidence:.2f}"
                     _tag(canvas, caption, x0, y0 - 20 if y0 >= 20 else y1 + 2, colour)
+        if layers.robot_view and frame.robot_view is not None:
+            self._inset(canvas, frame.robot_view)
         counts = [sum(d.class_id == c for d in frame.detections)
                   for c in range(len(schema.DETECTION_CLASSES))]
         note = "  ".join(f"{name} {count}" for name, count in
                          zip(schema.DETECTION_CLASSES, counts))
-        return titled(canvas, "CAMERA  |  detector", note)
+        title = "CAMERA  |  detector"
+        if self.meta.get("phase4"):
+            title = (f"CAMERA  |  virtual ZED Mini on {self.meta.get('robot', '')}, mount "
+                     f"{self.meta.get('mount', '')}")
+        return titled(canvas, title, note)
+
+    def _inset(self, canvas: np.ndarray, picture: np.ndarray) -> None:
+        """The third-person picture of the robot in the panel's top-right corner."""
+        width = max(160, int(0.34 * canvas.shape[1]))
+        height = round(width * picture.shape[0] / picture.shape[1])
+        small = cv2.resize(picture, (width, height), interpolation=cv2.INTER_AREA)
+        x0, y0 = canvas.shape[1] - width - 8, 8
+        canvas[y0:y0 + height, x0:x0 + width] = small
+        cv2.rectangle(canvas, (x0 - 1, y0 - 1), (x0 + width, y0 + height), TEXT, 1)
+        _tag(canvas, "robot, third person (markers: body axes, mount, view direction)",
+             x0 + 4, y0 + height - 20, TEXT, 0.38)
 
     # ---------------------------------------------------------------- segmentation
     def segmentation(self, frame: ViewerFrame, layers: Layers) -> np.ndarray:
@@ -516,6 +535,10 @@ class PanelRenderer:
         if not reveal_all:
             v = {name: np.where(np.arange(timeline.steps) <= frame.step, series, np.nan)
                  for name, series in v.items()}
+        fusion = frame.fusion
+        top = 78
+        if fusion is not None:
+            top = self._fusion_text(canvas, frame, show_truth, top)
         position = [("reported 1 sigma", v["position_std"], SERIES_B)]
         yaw = [("reported 1 sigma", v["yaw_std_deg"], SERIES_B)]
         if show_truth:
@@ -534,7 +557,15 @@ class PanelRenderer:
                                          SERIES_A), ("whole pipeline", v["total_ms"],
                                                      SERIES_B)], None, 60.0, None, True),
         ]
-        top, bottom_margin = 78, 22
+        if fusion is not None:
+            # Camera pitch: what the robot projects with against (display only) the truth.
+            pitch = [("estimated", v["est_camera_pitch"], SERIES_B)]
+            if show_truth:
+                pitch.insert(0, ("true", v["true_camera_pitch"], SERIES_A))
+            charts.insert(2, ("Camera pitch below the horizon [deg]"
+                              + ("" if show_truth else "  (true pitch hidden)"), pitch, None,
+                              0.0, None, "range"))
+        bottom_margin = 22
         chart_height = (height - top - bottom_margin) // len(charts)
         left, right = 58, width - 16
         duration = max(dt * (steps - 1), dt)
@@ -543,7 +574,7 @@ class PanelRenderer:
             y0 = top + index * chart_height
             self._chart(canvas, (left, y0 + 18, right, y0 + chart_height - 8), title, series,
                         timeline, duration, frame.step, target, floor, fixed_max, events,
-                        v["ambiguous"] if index == 2 else None, robust)
+                        v["ambiguous"] if title.startswith("Filter") else None, robust)
         for fraction in (0.0, 0.25, 0.5, 0.75, 1.0):
             label = f"{fraction * duration:.0f} s"
             x = left + fraction * (right - left)
@@ -552,24 +583,32 @@ class PanelRenderer:
 
     def _chart(self, canvas, box, title: str, series, timeline: Timeline, duration: float,
                cursor: int, target, floor: float, fixed_max, events, ambiguous,
-               robust: bool = False) -> None:
+               robust: bool | str = False) -> None:
         """One strip chart. ``robust`` scales the axis to the 98th percentile, so that a
         single outlier (the first inference after loading takes over a second) does not
-        flatten everything else; values above the axis are drawn at its top."""
+        flatten everything else; values above the axis are drawn at its top. ``"range"``
+        fits the axis to the data's own range instead of starting at zero (for a quantity
+        such as an angle that hovers around a non-zero value)."""
         x0, y0, x1, y1 = box
         seen = slice(0, max(timeline.last + 1, 1))
-        peak = 0.0
-        for _, values, _ in series:
-            finite = values[seen][np.isfinite(values[seen])]
-            if len(finite):
-                peak = max(peak, float(np.percentile(finite, 98.0)) * 1.25 if robust
-                           else float(finite.max()))
-        top = fixed_max if fixed_max is not None else _nice_ceiling(max(peak * 1.08, floor))
+        peak, low = 0.0, 0.0
+        collected = [values[seen][np.isfinite(values[seen])] for _, values, _ in series]
+        collected = np.concatenate(collected) if collected else np.zeros(0)
+        if robust == "range":
+            if len(collected):
+                low, peak = float(collected.min()), float(collected.max())
+            centre, half = 0.5 * (low + peak), max(0.55 * (peak - low), 1.0)
+            low, top = math.floor(centre - half), math.ceil(centre + half)
+        else:
+            if len(collected):
+                peak = float(np.percentile(collected, 98.0)) * 1.25 if robust \
+                    else float(collected.max())
+            top = fixed_max if fixed_max is not None else _nice_ceiling(max(peak * 1.08, floor))
         time = timeline.time
 
         def to_xy(values: np.ndarray) -> np.ndarray:
             x = x0 + (x1 - x0) * time / duration
-            y = y1 - (y1 - y0) * np.clip(values / top, 0.0, 1.0)
+            y = y1 - (y1 - y0) * np.clip((values - low) / (top - low), 0.0, 1.0)
             out = np.column_stack([x, y])
             out[~np.isfinite(values)] = np.nan
             return out
@@ -577,7 +616,8 @@ class PanelRenderer:
         for fraction in (0.0, 0.5, 1.0):
             y = round(y1 - fraction * (y1 - y0))
             cv2.line(canvas, (x0, y), (x1, y), GRID, 1)
-            label = f"{fraction * top:.0f}" if top >= 20.0 else f"{fraction * top:.3g}"
+            tick = low + fraction * (top - low)
+            label = f"{tick:.0f}" if top >= 20.0 else f"{tick:.3g}"
             _text(canvas, label, x0 - 8 - _text_width(label, 0.4), y + 4, TEXT_DIM, 0.4)
         if ambiguous is not None:
             flagged = np.flatnonzero(ambiguous[seen] > 0.5)
@@ -612,6 +652,49 @@ class PanelRenderer:
             x -= 24
             cv2.line(canvas, (x, y0 - 10), (x + 16, y0 - 10), colour, 2, cv2.LINE_AA)
             x -= 18
+
+    def _fusion_text(self, canvas, frame: ViewerFrame, show_truth: bool, y: int) -> int:
+        """The Phase 4 lines of the diagnostics panel: the robot's camera-pose estimate, the
+        truth next to it (display only), and the mount. Returns where the charts may start."""
+        fusion, meta = frame.fusion, self.meta
+
+        def degrees(value: float) -> str:
+            return f"{value:+5.1f}" if math.isfinite(value) else "  n/a"
+
+        line = (f"camera (estimated)  pitch {degrees(fusion.camera_pitch_deg)}  roll "
+                f"{degrees(fusion.camera_roll_deg)} deg  height {fusion.camera_height:.3f} m")
+        _text(canvas, line, 12, y + 8, SERIES_B, 0.44)
+        if show_truth and math.isfinite(frame.truth.camera_pitch_deg):
+            t = frame.truth
+            _text(canvas, f"camera (true)       pitch {degrees(t.camera_pitch_deg)}  roll "
+                          f"{degrees(t.camera_roll_deg)} deg  height {t.camera_height:.3f} m"
+                          f"     error  pitch {degrees(fusion.camera_pitch_deg - t.camera_pitch_deg)}"
+                          f"  roll {degrees(fusion.camera_roll_deg - t.camera_roll_deg)} deg",
+                  12, y + 27, SERIES_A, 0.44)
+        std = f" +-{fusion.tilt_std_deg:.1f}" if math.isfinite(fusion.tilt_std_deg) else ""
+        sync = ""
+        if fusion.sync_method:
+            sync = f", {fusion.sync_method}"
+            if math.isfinite(fusion.sync_offset_ms):
+                sync += f" ({abs(fusion.sync_offset_ms):.1f} ms to the nearest IMU sample)"
+        body = (f"{meta.get('fusion_label', '')}: body tilt roll {degrees(fusion.body_roll_deg)}"
+                f"  pitch {degrees(fusion.body_pitch_deg)}{std} deg  [{fusion.source}{sync}]")
+        if show_truth and math.isfinite(frame.truth.body_pitch_deg):
+            body += (f"   true roll {degrees(frame.truth.body_roll_deg)}  pitch "
+                     f"{degrees(frame.truth.body_pitch_deg)}")
+        _text(canvas, body, 12, y + 46, TEXT, 0.42)
+        mount = str(meta.get("mount_description", ""))
+        if fusion.monitor_status:
+            bias = fusion.monitor_bias_deg
+            mount += (f"   |   mount monitor: {fusion.monitor_status}, bias roll "
+                      f"{degrees(bias[0])} pitch {degrees(bias[1])}, correcting "
+                      f"{degrees(fusion.monitor_correction_deg[1])} pitch")
+            colour = WARNING if fusion.monitor_status in ("bias_suspected", "correcting") \
+                else TEXT_DIM
+        else:
+            colour = TEXT_DIM
+        _text(canvas, f"mount {mount}", 12, y + 64, colour, 0.40)
+        return y + 74
 
     # ---------------------------------------------------------------- all four
     def panels(self, frame: ViewerFrame, layers: Layers, timeline: Timeline,
