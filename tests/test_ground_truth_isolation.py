@@ -40,7 +40,12 @@ from robosoccer_perception.pipeline.vision_localization import (  # noqa: E402
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "robosoccer_perception"
 #: Modules that make up the runtime pipeline (everything between the image and the pose).
 RUNTIME_MODULES = sorted([*(SOURCE / "perception").glob("*.py"), *(SOURCE / "pipeline").glob("*.py"),
-                          SOURCE / "geometry" / "ground_projection.py"])
+                          SOURCE / "geometry" / "ground_projection.py",
+                          # Phase 4: IMU orientation, synchronisation, camera pose, mount
+                          # calibration monitoring and the geometry they stand on
+                          *(SOURCE / "estimation").glob("*.py"),
+                          SOURCE / "geometry" / "mount.py", SOURCE / "geometry" / "quaternion.py",
+                          SOURCE / "geometry" / "robot_description.py"])
 FORBIDDEN_IMPORTS = (
     "robosoccer_perception.simulation",         # the simulator and its ground truth
     "robosoccer_perception.vision_benchmark",   # the evaluator
@@ -62,6 +67,8 @@ def test_runtime_modules_exist_and_are_scanned():
     assert {"extractor.py", "line_features.py", "goal_features.py", "intersections.py",
             "line_fitting.py", "uncertainty.py", "observation_builder.py",
             "vision_localization.py", "ground_projection.py"} <= names
+    assert {"orientation.py", "sync.py", "camera_pose.py", "calibration_monitor.py",
+            "imu_types.py", "mount.py", "quaternion.py", "robot_description.py"} <= names
 
 
 @pytest.mark.parametrize("path", RUNTIME_MODULES, ids=lambda p: p.name)
@@ -318,3 +325,69 @@ def test_the_simulator_is_driven_by_truth_and_refuses_estimates(gl_context, s_fi
     with pytest.raises(RuntimeError):
         plain.labels_as_vision()
     plain.close()
+
+
+# ------------------------------------------------------------------ Phase 4: the IMU chain
+def test_orientation_estimation_runs_with_mujoco_and_the_simulator_blocked():
+    """The tilt filter, the synchronisation and the camera-pose estimator in a fresh
+    interpreter where neither MuJoCo nor the simulation package can be imported."""
+    script = textwrap.dedent("""
+        import sys
+        sys.modules["mujoco"] = None
+        sys.modules["robosoccer_perception.simulation"] = None
+        import math
+        import numpy as np
+        from robosoccer_perception.estimation.camera_pose import CameraPoseEstimator, FusionConfig
+        from robosoccer_perception.estimation.calibration_monitor import CalibrationMonitor
+        from robosoccer_perception.estimation.imu_types import GRAVITY, ImuSample
+        from robosoccer_perception.geometry import quaternion as quat
+        from robosoccer_perception.geometry.camera import StereoCameraConfig
+        from robosoccer_perception.geometry.field import FieldGeometry
+        from robosoccer_perception.geometry.ground_projection import EstimatedCameraCalibration
+        from robosoccer_perception.geometry.mount import CameraMount
+        from robosoccer_perception.geometry.robot_description import RobotDescription
+
+        body = RobotDescription.load("placeholder").body
+        calibration = EstimatedCameraCalibration.from_camera_config(
+            StereoCameraConfig.load("zed_mini_sim"))
+        estimator = CameraPoseEstimator(calibration, CameraMount.load("legacy_rig"), body, 0.063,
+                                        FusionConfig(use_uncertainty=True))
+        up = quat.up_from_tilt(0.0, math.radians(5.0))
+        for index in range(1200):
+            estimator.add_imu(ImuSample(0.005 * index, np.zeros(3), GRAVITY * up))
+        estimate = estimator.estimate(5.5)
+        CalibrationMonitor(FieldGeometry.load("s_field"))
+        bad = [m for m, loaded in sys.modules.items()
+               if loaded is not None and m.startswith("robosoccer_perception.")
+               and (".simulation" in m or ".vision_benchmark" in m or ".humanoid_benchmark" in m)]
+        assert not bad, bad
+        print("pitch %.3f" % math.degrees(estimate.body_pitch))
+    """)
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                            timeout=120)
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert float(result.stdout.split()[-1]) == pytest.approx(5.0, abs=0.1)
+
+
+def test_estimators_take_sensor_types_only():
+    from robosoccer_perception.estimation import camera_pose, imu_types, orientation, sync
+
+    assert [f.name for f in dataclasses.fields(imu_types.ImuSample)] == [
+        "timestamp", "gyro", "accel"]
+    assert list(inspect.signature(orientation.TiltEstimator.update).parameters) == [
+        "self", "sample"]
+    assert list(inspect.signature(camera_pose.CameraPoseEstimator.add_imu).parameters) == [
+        "self", "sample"]
+    assert list(inspect.signature(camera_pose.CameraPoseEstimator.estimate).parameters) == [
+        "self", "image_timestamp"]
+    assert set(inspect.signature(camera_pose.CameraPoseEstimator.__init__).parameters) == {
+        "self", "calibration", "mount", "body", "baseline", "cfg", "side"}
+    for cls in (orientation.OrientationEstimate, sync.SyncedTilt, camera_pose.CameraPoseEstimate):
+        for field in dataclasses.fields(cls):
+            assert not re.search(r"truth|true|field|global|world", field.name), (cls, field.name)
+    # the simulated IMU's truth arrays exist, and are not part of what a sample carries
+    from robosoccer_perception.simulation.imu import ImuStream
+
+    truth_fields = {f.name for f in dataclasses.fields(ImuStream) if "tru" in f.name}
+    assert truth_fields == {"true_time", "truth_roll", "truth_pitch"}
+    assert not truth_fields & {f.name for f in dataclasses.fields(imu_types.ImuSample)}

@@ -17,3 +17,6 @@ weights/
 *.pt
 *.onnx
 *.torchscript
+
+# The imported robot model is part of the repository (scripts/import_humanoid_model.py).
+!assets/**/*.npz

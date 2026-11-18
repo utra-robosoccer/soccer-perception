@@ -125,7 +125,7 @@ def foot_pixel(box, vanishing_point: np.ndarray | None, image_width: int, margin
 def extract_goal_posts(detections, mask: np.ndarray | None, image_size: tuple[int, int],
                        calibration: EstimatedCameraCalibration, pose: EstimatedCameraPose,
                        post_diameter: float, post_height: float, cfg: GoalPostConfig,
-                       noise: MeasurementNoiseConfig
+                       noise: MeasurementNoiseConfig, camera_inflation: float = 1.0
                        ) -> tuple[list[GoalPostFeature], dict[str, int]]:
     """Goal-post features of one frame, and counts of what was rejected and why.
 
@@ -247,7 +247,7 @@ def extract_goal_posts(detections, mask: np.ndarray | None, image_size: tuple[in
             pixel_std=tuple(noise.post_pixel_std),
             range_std_floor=noise.post_range_std_floor,
             bearing_std_floor=math.radians(noise.post_bearing_std_floor_deg),
-            confidence=detection.confidence)
+            confidence=detection.confidence, camera_inflation=camera_inflation)
         range_std, bearing_std = uncertainty.range_std, uncertainty.bearing_std
         if cut_side:
             # The width had to be assumed: the axis may be off by a good part of it.

@@ -13,6 +13,13 @@ placeholders, ``robots``), a backdrop (``background``) and a ball look; see
 `simulation/scene_objects.py`. `MujocoScene.render_segmentation` returns the geom id seen at
 every pixel, which is what dataset labels are derived from (`datasets/annotation.py`).
 
+Phase 4 can put a ROBOT BODY in place of the placeholder shape: `MujocoScene(robot=...,
+mount=...)` attaches UTRA's humanoid_prototype_1 (`simulation/humanoid.py`) or a tilting
+version of the capsule, adds markers for the body frame and the camera mount, and a third-
+person ``chase`` camera. The body is posed with `set_body`; the stereo rig is still placed
+from a `RigState`, so the cameras, the oracle and the labels work exactly as before. Without
+those two arguments the scene is the Phase 1 to 3 scene, unchanged.
+
 Importing this module requires the ``mujoco`` package (the ``sim`` extra).
 """
 from __future__ import annotations
@@ -37,9 +44,15 @@ from robosoccer_perception.simulation.ground_truth import GroundTruth  # noqa: E
 
 PLATFORM_GROUP = 1          # geom group of the placeholder robot; hidden in its own cameras
 NET_GROUP = 2               # goal nets: drawn in colour images, ignored by segmentation renders
+MARKER_GROUP = 4            # body-frame and mount markers: drawn only when asked for
 ISOLATION_GROUP = 5         # scratch group used to render one object on its own
 PIXEL_PITCH = 3.0e-6        # metres; only sets the scale of MuJoCo's metric sensor description
 LEFT_CAMERA, RIGHT_CAMERA, OVERVIEW_CAMERA = "zed_left", "zed_right", "overview"
+CHASE_CAMERA = "chase"      # third-person view of the robot (Phase 4 scenes only)
+CHASE_SIZE = (480, 270)     # width, height in pixels
+CHASE_OFFSET = (-0.95, -1.25, 0.90)     # camera position relative to the robot, field axes
+CHASE_TARGET = (0.20, 0.0, 0.42)        # the point it looks at, relative to the robot
+BODY_ROOT = "robot_root"    # mocap body that carries the robot's body frame
 
 
 def load_scene_config(name_or_path: str = "default",
@@ -93,8 +106,12 @@ def _turf_texture(turf: dict[str, Any]) -> tuple[np.ndarray, float]:
 
 
 def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
-               scene_cfg: dict[str, Any]) -> mujoco.MjSpec:
-    """Generate the MuJoCo model description of the whole scene."""
+               scene_cfg: dict[str, Any], robot=None, mount=None) -> mujoco.MjSpec:
+    """Generate the MuJoCo model description of the whole scene.
+
+    ``robot`` (a `RobotDescription`) and ``mount`` (a `CameraMount`) switch the Phase 4
+    additions on: a robot body that can tilt, mount markers and the chase camera.
+    """
     spec = mujoco.MjSpec()
     spec.modelname = f"robosoccer_{field.name}"
     world = spec.worldbody
@@ -107,8 +124,9 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
     k_overview = overview_intrinsics(field, scene_cfg)
     # ``offscreen_scale`` > 1 leaves room for supersampled segmentation renders (dataset labels).
     offscreen_scale = int(scene_cfg.get("offscreen_scale", 1))
-    spec.visual.global_.offwidth = max(k.width * offscreen_scale, k_overview.width)
-    spec.visual.global_.offheight = max(k.height * offscreen_scale, k_overview.height)
+    chase = CHASE_SIZE if robot is not None else (0, 0)
+    spec.visual.global_.offwidth = max(k.width * offscreen_scale, k_overview.width, chase[0])
+    spec.visual.global_.offheight = max(k.height * offscreen_scale, k_overview.height, chase[1])
     spec.visual.headlight.ambient = [float(lighting["ambient"])] * 3
     spec.visual.headlight.diffuse = [0.0] * 3
     spec.visual.headlight.specular = [0.0] * 3
@@ -222,17 +240,21 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
     scene_objects.add_background(world, field, scene_cfg.get("background"))
 
     # ---- camera platform: placeholder body, stereo rig, cameras
-    mount = camera_cfg.mount
+    rig_mount = camera_cfg.mount
     base = world.add_body(name="base", mocap=True)
-    torso_top = max(0.25, mount.height - 0.12)
-    base.add_geom(name="platform/torso", type=mujoco.mjtGeom.mjGEOM_CAPSULE, size=[0.09, 0, 0],
-                  fromto=[0, 0, 0.09, 0, 0, torso_top], rgba=[0.25, 0.3, 0.8, 1.0],
-                  group=PLATFORM_GROUP, material="matte", contype=0, conaffinity=0)
+    if robot is None:
+        torso_top = max(0.25, rig_mount.height - 0.12)
+        base.add_geom(name="platform/torso", type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+                      size=[0.09, 0, 0], fromto=[0, 0, 0.09, 0, 0, torso_top],
+                      rgba=[0.25, 0.3, 0.8, 1.0], group=PLATFORM_GROUP, material="matte",
+                      contype=0, conaffinity=0)
+    else:
+        _add_robot_body(spec, robot, mount)
     base.add_geom(name="platform/heading", type=mujoco.mjtGeom.mjGEOM_BOX,
                   size=[0.12, 0.02, 0.005], pos=[0.12, 0, 0.006], rgba=[0.9, 0.2, 0.2, 1.0],
                   group=PLATFORM_GROUP, material="matte", contype=0, conaffinity=0)
 
-    rig = world.add_body(name="stereo_rig", mocap=True, pos=[0, 0, mount.height])
+    rig = world.add_body(name="stereo_rig", mocap=True, pos=[0, 0, rig_mount.height])
     # Housing with the ZED Mini's outer dimensions (124.5 x 30.5 x 26.5 mm), behind the lenses.
     rig.add_geom(name="platform/camera_housing", type=mujoco.mjtGeom.mjGEOM_BOX,
                  size=[0.013, 0.062, 0.015], pos=[-0.02, 0, 0], rgba=[0.15, 0.15, 0.15, 1.0],
@@ -245,7 +267,29 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
         _add_pinhole_camera(rig, name, k, T_rig_optical[:3, 3], R_rig_mujoco)
     _add_pinhole_camera(world, OVERVIEW_CAMERA, k_overview,
                         [0.0, 0.0, float(scene_cfg["overview"]["height_m"])], np.eye(3))
+    if robot is not None:
+        chase_rig = world.add_body(name="chase_rig", mocap=True)
+        camera = chase_rig.add_camera(name=CHASE_CAMERA, fovy=42.0)
+        camera.resolution = list(CHASE_SIZE)
     return spec
+
+
+def _add_robot_body(spec: mujoco.MjSpec, robot, mount) -> None:
+    """The Phase 4 robot body under the mocap body `BODY_ROOT`, with its mount markers."""
+    from robosoccer_perception.simulation import humanoid
+
+    if robot.is_placeholder:
+        body = robot.body
+        carrier = spec.worldbody.add_body(name=BODY_ROOT, mocap=True)
+        carrier.add_geom(name="platform/torso", type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+                         size=[0.09, 0, 0],
+                         fromto=[0, 0, 0.09 - body.standing_height, 0, 0, body.torso_top[2]],
+                         rgba=[0.25, 0.3, 0.8, 1.0], group=PLATFORM_GROUP, material="matte",
+                         contype=0, conaffinity=0)
+    else:
+        carrier = humanoid.attach_to_scene(spec, robot, PLATFORM_GROUP, root=BODY_ROOT)
+    if mount is not None:
+        humanoid.add_mount_markers(carrier, robot.body, mount, MARKER_GROUP)
 
 
 def _add_pinhole_camera(body, name: str, k: CameraIntrinsics, position, R_parent_mujoco) -> None:
@@ -271,6 +315,8 @@ class _PlatformState:
     ball_position: np.ndarray
     ball_quat: np.ndarray = dataclasses.field(default_factory=lambda: np.array([1.0, 0, 0, 0]))
     robots: list = dataclasses.field(default_factory=list)      # RobotState | None per robot
+    T_footprint_body: np.ndarray | None = None                  # Phase 4: the body's pose
+    joints: dict | None = None                                  # Phase 4: humanoid joint angles
 
 
 @dataclasses.dataclass(frozen=True)
@@ -285,18 +331,27 @@ class MujocoScene:
     """A compiled scene plus the scripted-control API of the camera platform."""
 
     def __init__(self, field: FieldGeometry, camera_cfg: StereoCameraConfig | None = None,
-                 scene_cfg: dict[str, Any] | None = None, scenario_id: str = "unnamed"):
+                 scene_cfg: dict[str, Any] | None = None, scenario_id: str = "unnamed",
+                 robot=None, mount=None):
         self.field = field
         self.camera_cfg = camera_cfg or StereoCameraConfig.load()
         self.camera_model = StereoCameraModel(self.camera_cfg)
         self.scene_cfg = scene_cfg or load_scene_config()
         self.scenario_id = scenario_id
-        self.model = build_spec(field, self.camera_cfg, self.scene_cfg).compile()
+        self.robot, self.mount = robot, mount
+        self.model = build_spec(field, self.camera_cfg, self.scene_cfg, robot, mount).compile()
         self.data = mujoco.MjData(self.model)
         self.step_index = 0
         self.time = 0.0
+        names = ("base", "stereo_rig", "ball") + (
+            (BODY_ROOT, "chase_rig") if robot is not None else ())
         self._mocap = {name: int(self.model.body_mocapid[self.model.body(name).id])
-                       for name in ("base", "stereo_rig", "ball")}
+                       for name in names}
+        self.humanoid = None                # the posed humanoid body, when one is attached
+        if robot is not None and not robot.is_placeholder:
+            from robosoccer_perception.simulation.humanoid import HumanoidBody
+
+            self.humanoid = HumanoidBody(self.model, robot, root=BODY_ROOT)
         ball_cfg = self.scene_cfg["ball"]
         self._state = _PlatformState(
             np.zeros(3), self.camera_cfg.mount,
@@ -344,6 +399,23 @@ class MujocoScene:
 
     def rotate_in_place(self, angle: float) -> None:
         self.teleport(self._state.base_pose + [0.0, 0.0, angle])
+
+    def set_body(self, T_footprint_body=None, joints: dict | None = None) -> None:
+        """Pose the robot's body (Phase 4 scenes): its body frame in the footprint frame, and
+        for the humanoid its joint angles (None = the stand configuration). ``None`` for the
+        transform stands the body upright at its nominal height."""
+        if self.robot is None:
+            raise RuntimeError("this scene has no robot body; construct MujocoScene(robot=...)")
+        self._state.T_footprint_body = None if T_footprint_body is None \
+            else np.array(T_footprint_body, dtype=float)
+        self._state.joints = None if joints is None else dict(joints)
+        self._apply()
+
+    def body_pose(self) -> np.ndarray:
+        """``T_field_body`` of the robot's body frame, read back from MuJoCo."""
+        name = "robot/pelvis" if self.humanoid is not None else BODY_ROOT
+        body = self.data.body(name)
+        return tf.make_transform(np.array(body.xmat).reshape(3, 3), np.array(body.xpos))
 
     def set_ball(self, position, quat=None) -> None:
         """Move the ball. A 2-D position puts it on the ground. ``None`` hides it.
@@ -401,6 +473,29 @@ class MujocoScene:
             self.data.mocap_quat[self._mocap[name]] = tf.quat_wxyz_from_matrix(transform[:3, :3])
         self.data.mocap_pos[self._mocap["ball"]] = state.ball_position
         self.data.mocap_quat[self._mocap["ball"]] = state.ball_quat
+        if self.robot is not None:
+            T_footprint_body = state.T_footprint_body
+            if T_footprint_body is None:
+                T_footprint_body = tf.make_transform(
+                    None, [0.0, 0.0, self.robot.body.standing_height])
+            T_field_body = T_field_base @ T_footprint_body
+            if self.humanoid is not None:
+                self.humanoid.apply(self.data, T_field_body, state.joints)
+            else:
+                self.data.mocap_pos[self._mocap[BODY_ROOT]] = T_field_body[:3, 3]
+                self.data.mocap_quat[self._mocap[BODY_ROOT]] = tf.quat_wxyz_from_matrix(
+                    T_field_body[:3, :3])
+            # The chase camera keeps a fixed offset in FIELD axes and looks at the robot, so
+            # the robot is seen to turn and to walk across the field.
+            eye = np.array([state.base_pose[0], state.base_pose[1], 0.0]) + CHASE_OFFSET
+            target = np.array([state.base_pose[0], state.base_pose[1], 0.0]) + CHASE_TARGET
+            backward = (eye - target) / np.linalg.norm(eye - target)
+            right = np.cross([0.0, 0.0, 1.0], backward)
+            right /= np.linalg.norm(right)
+            R_field_camera = np.column_stack([right, np.cross(backward, right), backward])
+            self.data.mocap_pos[self._mocap["chase_rig"]] = eye
+            self.data.mocap_quat[self._mocap["chase_rig"]] = tf.quat_wxyz_from_matrix(
+                R_field_camera)
         self.data.time = self.time
         standing = []
         for handle, robot in zip(self._robots, state.robots):
@@ -440,8 +535,10 @@ class MujocoScene:
             ball_position=np.array(self.data.body("ball").xpos))
 
     # ------------------------------------------------------------------ rendering
-    def render(self, camera_name: str, show_platform: bool = True) -> np.ndarray:
-        """RGB image (H, W, 3 uint8) from a named camera, at that camera's own resolution."""
+    def render(self, camera_name: str, show_platform: bool = True,
+               show_markers: bool = False) -> np.ndarray:
+        """RGB image (H, W, 3 uint8) from a named camera, at that camera's own resolution.
+        ``show_markers`` also draws the body-frame and mount markers of a Phase 4 scene."""
         width, height = (int(v) for v in self.model.cam_resolution[self.model.camera(camera_name).id])
         renderer = self._renderers.get((height, width))
         if renderer is None:
@@ -449,8 +546,15 @@ class MujocoScene:
             self._renderers[(height, width)] = renderer
         option = mujoco.MjvOption()
         option.geomgroup[PLATFORM_GROUP] = int(show_platform)
+        option.geomgroup[MARKER_GROUP] = int(show_markers)
         renderer.update_scene(self.data, camera=camera_name, scene_option=option)
         return renderer.render().copy()
+
+    def render_chase(self, show_markers: bool = True) -> np.ndarray:
+        """Third-person view of the robot with its body-frame and mount markers."""
+        if self.robot is None:
+            raise RuntimeError("this scene has no chase camera; construct MujocoScene(robot=...)")
+        return self.render(CHASE_CAMERA, show_platform=True, show_markers=show_markers)
 
     def render_segmentation(self, camera_name: str, scale: int = 1,
                             only_geoms=None) -> np.ndarray:
