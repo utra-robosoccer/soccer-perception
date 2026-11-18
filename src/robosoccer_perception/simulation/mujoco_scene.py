@@ -124,7 +124,7 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
     k_overview = overview_intrinsics(field, scene_cfg)
     # ``offscreen_scale`` > 1 leaves room for supersampled segmentation renders (dataset labels).
     offscreen_scale = int(scene_cfg.get("offscreen_scale", 1))
-    chase = CHASE_SIZE if robot is not None else (0, 0)
+    chase = tuple(scene_cfg.get("chase_size", CHASE_SIZE)) if robot is not None else (0, 0)
     spec.visual.global_.offwidth = max(k.width * offscreen_scale, k_overview.width, chase[0])
     spec.visual.global_.offheight = max(k.height * offscreen_scale, k_overview.height, chase[1])
     spec.visual.headlight.ambient = [float(lighting["ambient"])] * 3
@@ -270,7 +270,7 @@ def build_spec(field: FieldGeometry, camera_cfg: StereoCameraConfig,
     if robot is not None:
         chase_rig = world.add_body(name="chase_rig", mocap=True)
         camera = chase_rig.add_camera(name=CHASE_CAMERA, fovy=42.0)
-        camera.resolution = list(CHASE_SIZE)
+        camera.resolution = [int(v) for v in chase]
     return spec
 
 
@@ -550,11 +550,22 @@ class MujocoScene:
         renderer.update_scene(self.data, camera=camera_name, scene_option=option)
         return renderer.render().copy()
 
-    def render_chase(self, show_markers: bool = True) -> np.ndarray:
-        """Third-person view of the robot with its body-frame and mount markers."""
+    def render_chase(self, show_markers: bool = True, body_alpha: float | None = None
+                     ) -> np.ndarray:
+        """Third-person view of the robot with its body-frame and mount markers.
+        ``body_alpha`` below 1 draws the body see-through, so that the body frame's origin and
+        the mount offset inside the torso can be seen."""
         if self.robot is None:
             raise RuntimeError("this scene has no chase camera; construct MujocoScene(robot=...)")
-        return self.render(CHASE_CAMERA, show_platform=True, show_markers=show_markers)
+        if body_alpha is None:
+            return self.render(CHASE_CAMERA, show_platform=True, show_markers=show_markers)
+        body = np.flatnonzero(self.model.geom_group == PLATFORM_GROUP)
+        saved = self.model.geom_rgba[body, 3].copy()
+        try:
+            self.model.geom_rgba[body, 3] = float(body_alpha)
+            return self.render(CHASE_CAMERA, show_platform=True, show_markers=show_markers)
+        finally:
+            self.model.geom_rgba[body, 3] = saved
 
     def render_segmentation(self, camera_name: str, scale: int = 1,
                             only_geoms=None) -> np.ndarray:

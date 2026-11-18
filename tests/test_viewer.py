@@ -222,7 +222,9 @@ def test_panels_have_one_size_and_a_title_bar(renderer):
 
 @pytest.mark.parametrize("attribute,panel", [(a, p) for a, p, _ in Layers.CATALOGUE])
 def test_every_toggle_changes_its_own_panel(renderer, attribute, panel):
-    frame, timeline = fake_frame(), fake_timeline()
+    # A frame with something in every layer, including (since Phase 4) a picture of the robot.
+    frame = dataclasses.replace(fake_frame(), robot_view=np.full((90, 160, 3), 90, np.uint8))
+    timeline = fake_timeline()
     on = Layers(**{field.name: True for field in dataclasses.fields(Layers)})
     off = dataclasses.replace(on, **{attribute: False})
     with_layer = renderer.panels(frame, on, timeline)

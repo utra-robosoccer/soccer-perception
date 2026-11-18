@@ -51,7 +51,7 @@ def save_overview(report: dict[str, Any], path: Path) -> Path:
     arms = list(next(iter(report["scenarios"].values()))["arms"])
     panels = (("position_rmse_all", "Position RMSE over the whole run [m]", True),
               ("camera_pitch_rmse_deg", "Camera pitch error, RMS [deg]", False),
-              ("position_consistency", "Consistency: RMS error / RMS reported std", False))
+              ("position_consistency", "Consistency: RMS error / RMS reported std", True))
     figure = style.new_figure(15.0, 0.42 * len(scenarios) + 2.2)
     axes = figure.subplots(1, len(panels), sharey=True)
     rows = np.arange(len(scenarios))[::-1]
@@ -108,7 +108,7 @@ def save_run_figure(run, path: Path, title: str = "") -> Path:
             ax.plot(time, truth + getattr(run.arms[name], key), color=colour, linewidth=1.5,
                     label=f"{text} (what the robot uses)")
         ax.set_ylabel(label, fontsize=9.5)
-        _legend(ax, loc="upper right", ncol=3)
+        _legend(ax, loc="lower right", bbox_to_anchor=(1.0, 0.98), ncol=3)    # above the data
     ax = axes[2]
     style.style_axes(ax)
     for name, arm in run.arms.items():
@@ -118,10 +118,10 @@ def save_run_figure(run, path: Path, title: str = "") -> Path:
     ax.set_ylabel("Position error [m]", fontsize=9.5)
     ax.set_xlabel("time [s]", fontsize=9.5)
     ax.set_ylim(bottom=0.0)
-    _legend(ax, loc="upper right", ncol=2)
+    _legend(ax, loc="lower right", bbox_to_anchor=(1.0, 0.98), ncol=3)
     figure.suptitle(title or f"{run.scenario_id}, seed {run.seed}", fontsize=11.5,
                     color=style.TEXT, x=0.01, ha="left")
-    figure.subplots_adjust(hspace=0.12, top=0.94)
+    figure.subplots_adjust(hspace=0.30, top=0.90)
     return _save(figure, path)
 
 

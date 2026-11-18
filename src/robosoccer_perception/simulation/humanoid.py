@@ -461,7 +461,7 @@ def add_mount_markers(parent, body: BodyGeometry, mount: CameraMount, group: int
     for axis, rgba in ((0, [0.9, 0.15, 0.15, 1.0]), (1, [0.15, 0.75, 0.2, 1.0]),
                        (2, [0.2, 0.35, 0.95, 1.0])):
         tip = np.zeros(3)
-        tip[axis] = 0.14
+        tip[axis] = 0.35                    # long enough to stick out of the torso
         stick(f"body_axis_{'xyz'[axis]}", np.zeros(3), tip, 0.006, rgba)
     stick("mount_offset", np.zeros(3), camera, 0.003, [1.0, 0.85, 0.1, 1.0])
     if mount.head_extension:
