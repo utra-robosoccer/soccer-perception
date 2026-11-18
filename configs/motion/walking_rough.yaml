@@ -1,0 +1,21 @@
+# SYNTHETIC body motion. Plausible for a 70 cm humanoid; NOT fitted to measurements of
+# humanoid_prototype_1 (see simulation/body_motion.py). Angles in degrees, lengths in metres
+# (one-sided amplitudes), frequencies in hertz.
+name: walking_rough
+description: "An unsteady gait: the walking profile with about 1.7 times the body motion."
+step_frequency_hz: 2.0
+gait_roll_deg: 4.5
+gait_pitch_deg: 3.0
+gait_yaw_deg: 3.5
+gait_lateral_m: 0.032
+gait_vertical_m: 0.013
+gait_surge_m: 0.010
+gait_lean_pitch_deg: 3.5
+sway_pitch_deg: 0.6
+sway_pitch_hz: 0.30
+sway_roll_deg: 0.4
+sway_roll_hz: 0.23
+noise_roll_deg: 0.6
+noise_pitch_deg: 0.6
+noise_height_m: 0.002
+noise_bandwidth_hz: 4.0

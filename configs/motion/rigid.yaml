@@ -1,0 +1,5 @@
+# SYNTHETIC body motion. Plausible for a 70 cm humanoid; NOT fitted to measurements of
+# humanoid_prototype_1 (see simulation/body_motion.py). Angles in degrees, lengths in metres
+# (one-sided amplitudes), frequencies in hertz.
+name: rigid
+description: "A perfectly rigid, level body: what Phases 1 to 3 assumed."

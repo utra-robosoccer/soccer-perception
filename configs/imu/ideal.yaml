@@ -1,0 +1,12 @@
+# A perfect IMU: no noise, no bias, no delay. For tests and as a reference, never as a claim.
+name: ideal
+rate_hz: 200.0
+rate_jitter: 0.0
+gyro_noise_std: 0.0
+accel_noise_std: 0.0
+gyro_bias_std: 0.0
+accel_bias_std: 0.0
+gyro_bias_walk: 0.0
+accel_bias_walk: 0.0
+latency_s: 0.0
+latency_jitter_s: 0.0
